@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="comic_cream">#FFF6E5</color>
+    <color name="comic_ink">#1B1B1B</color>
+    <color name="comic_yellow">#FFD93D</color>
+    <color name="comic_coral">#FF6B6B</color>
+</resources>

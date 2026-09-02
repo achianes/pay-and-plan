@@ -1,0 +1,524 @@
+package com.payandplan.app.ui.screens
+
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import coil.compose.AsyncImage
+import com.payandplan.app.data.ShoppingItem
+import com.payandplan.app.data.ShoppingList
+import com.payandplan.app.data.Visibility
+import com.payandplan.app.ui.MainViewModel
+import com.payandplan.app.ui.components.ComicButton
+import com.payandplan.app.ui.components.ComicCard
+import com.payandplan.app.ui.components.ComicChip
+import com.payandplan.app.ui.components.ComicField
+import com.payandplan.app.ui.components.ComicIconButton
+import com.payandplan.app.ui.components.openAttachment
+import com.payandplan.app.util.FileStore
+import com.payandplan.app.ui.components.PosterTitle
+import com.payandplan.app.ui.components.SpeechBubble
+import com.payandplan.app.ui.theme.Coral
+import com.payandplan.app.ui.theme.Ink
+import com.payandplan.app.ui.theme.Mint
+import com.payandplan.app.ui.theme.Paper
+import com.payandplan.app.ui.theme.PosterFont
+import com.payandplan.app.ui.theme.Sky
+import com.payandplan.app.ui.theme.Yellow
+import com.payandplan.app.util.Format
+import java.time.LocalDate
+
+@Composable
+fun ListsScreen(
+    vm: MainViewModel,
+    onOpenList: (String) -> Unit
+) {
+    val lists by vm.shoppingLists.collectAsState()
+    val currency = vm.currency()
+    val me = vm.myUserId()
+
+    LazyColumn(
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 170.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item { PosterTitle("SHOPPING") }
+        item {
+            Text(
+                "Write the list, hand it to someone. They tick things off and type what it cost: " +
+                    "it lands in the calendar as a paid bill in their name.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink
+            )
+        }
+
+        val mine = lists.filter { it.assignedToUserId == me && !it.isDone }
+        val others = lists.filter { it.assignedToUserId != me && !it.isDone }
+        val done = lists.filter { it.isDone }
+
+        if (mine.isNotEmpty()) {
+            item { Text("🛒 FOR YOU", style = MaterialTheme.typography.headlineSmall, color = Ink) }
+            items(mine, key = { it.id }) { ListCard(vm, it, currency, onOpenList) }
+        }
+        if (others.isNotEmpty()) {
+            item { Text("👥 THE OTHERS", style = MaterialTheme.typography.headlineSmall, color = Ink) }
+            items(others, key = { it.id }) { ListCard(vm, it, currency, onOpenList) }
+        }
+        if (done.isNotEmpty()) {
+            item { Text("✅ DONE", style = MaterialTheme.typography.headlineSmall, color = Ink) }
+            items(done, key = { it.id }) { ListCard(vm, it, currency, onOpenList) }
+        }
+        if (lists.isEmpty()) {
+            item {
+                SpeechBubble("No lists yet. Tap + to write one.", Modifier.fillMaxWidth(), Yellow, "🛒")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListCard(
+    vm: MainViewModel,
+    list: ShoppingList,
+    currency: String,
+    onOpen: (String) -> Unit
+) {
+    val items by vm.shoppingItems(list.id).collectAsState(initial = emptyList())
+    val ticked = items.count { it.checked }
+    val who = vm.memberById(list.assignedToUserId)
+    ComicCard(
+        color = if (list.isDone) Mint else Paper,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = { onOpen(list.id) }
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(list.title, style = MaterialTheme.typography.titleMedium, color = Ink)
+                Text(
+                    buildString {
+                        append("$ticked/${items.size} items")
+                        who?.let { append(" · for ${it.name}") }
+                        list.dueDate?.let {
+                            append(" · ${Format.day(LocalDate.ofEpochDay(it))} ${Format.time(list.dueTimeMinutes)}")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                if (list.isDone) {
+                    Text(
+                        Format.money(list.actualCents ?: 0, currency),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = PosterFont),
+                        color = Ink
+                    )
+                    Text("SPENT", style = MaterialTheme.typography.labelSmall, color = Ink)
+                } else if (list.budgetCents != null) {
+                    Text("budget", style = MaterialTheme.typography.labelSmall, color = Ink)
+                    Text(
+                        Format.money(list.budgetCents, currency),
+                        style = MaterialTheme.typography.titleMedium.copy(fontFamily = PosterFont),
+                        color = Ink
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ListDetailScreen(
+    vm: MainViewModel,
+    listId: String,
+    onBack: () -> Unit,
+    onEdit: (String) -> Unit
+) {
+    val list by vm.shoppingList(listId).collectAsState(initial = null)
+    val items by vm.shoppingItems(listId).collectAsState(initial = emptyList())
+    val suggestions by vm.itemSuggestions.collectAsState()
+    val photos by vm.itemPhotos.collectAsState()
+    val currency = vm.currency()
+    var newItem by remember { mutableStateOf("") }
+    var actual by remember { mutableStateOf("") }
+
+    val l = list
+    if (l == null) {
+        SpeechBubble("This list is gone.", Modifier.fillMaxWidth(), Yellow, "🕳️")
+        return
+    }
+    val who = vm.memberById(l.assignedToUserId)
+    val suggested = items.mapNotNull { it.priceCents }.sum()
+
+    LazyColumn(
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 60.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ComicIconButton(Icons.Filled.ArrowBack, onBack, color = Yellow, size = 42.dp, contentDescription = "Back")
+                Box(Modifier.size(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(l.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
+                    Text(
+                        buildString {
+                            append(who?.let { "For ${it.name}" } ?: "Anyone can do it")
+                            l.dueDate?.let {
+                                append(" · ${Format.day(LocalDate.ofEpochDay(it))} ${Format.time(l.dueTimeMinutes)}")
+                            }
+                            l.budgetCents?.let { append(" · budget ${Format.money(it, currency)}") }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink
+                    )
+                }
+                ComicButton("EDIT", { onEdit(l.id) }, color = Sky, compact = true)
+            }
+        }
+
+        item {
+            ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
+                if (items.isEmpty()) {
+                    Text("Empty list. Add what is needed.", style = MaterialTheme.typography.bodyMedium, color = Ink)
+                }
+                items.forEach { item -> ItemRow(vm, item, currency, photos[item.id]) }
+                Box(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ComicField(newItem, { newItem = it }, "Add something", Modifier.weight(1f))
+                    Box(Modifier.size(8.dp))
+                    ComicButton("ADD", {
+                        if (newItem.isNotBlank()) { vm.addItem(l.id, newItem); newItem = "" }
+                    }, color = Mint, compact = true)
+                }
+
+                // what the household usually buys, filtered by what is being typed
+                val onList = items.map { it.text.lowercase() }.toSet()
+                val matches = suggestions
+                    .filter { it.lowercase() !in onList && it.contains(newItem.trim(), ignoreCase = true) }
+                    .take(8)
+                if (matches.isNotEmpty()) {
+                    Box(Modifier.height(8.dp))
+                    Text(
+                        if (newItem.isBlank()) "USUAL" else "MATCHING",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Ink
+                    )
+                    Box(Modifier.height(6.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        matches.chunked(2).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { suggestion ->
+                                    ComicChip(
+                                        text = suggestion,
+                                        selected = false,
+                                        onClick = { vm.addItem(l.id, suggestion); newItem = "" },
+                                        color = Sky
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            if (l.isDone) {
+                ComicCard(color = Mint, modifier = Modifier.fillMaxWidth()) {
+                    Text("✅ DONE", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                    Text(
+                        Format.money(l.actualCents ?: 0, currency),
+                        style = MaterialTheme.typography.displaySmall.copy(fontFamily = PosterFont),
+                        color = Ink
+                    )
+                    vm.memberById(l.doneByUserId)?.let {
+                        Text("Paid by ${it.name}", style = MaterialTheme.typography.bodySmall, color = Ink)
+                    }
+                    Box(Modifier.height(10.dp))
+                    ComicButton("REOPEN", { vm.reopenList(l) }, color = Yellow, compact = true)
+                }
+            } else {
+                ComicCard(color = Yellow, modifier = Modifier.fillMaxWidth()) {
+                    Text("💶 FINISHED SHOPPING?", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                    Text(
+                        "Type what it actually cost. It becomes a paid bill in the calendar, " +
+                            "in the name of whoever did it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink
+                    )
+                    Box(Modifier.height(8.dp))
+                    ComicField(
+                        actual.ifBlank { if (suggested > 0) Format.centsToInput(suggested) else "" },
+                        { actual = it },
+                        "Total spent ($currency)",
+                        Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                    Box(Modifier.height(8.dp))
+                    ComicButton(
+                        "DONE, THIS IS THE COST",
+                        {
+                            val cents = Format.parseAmountToCents(
+                                actual.ifBlank { Format.centsToInput(suggested) }
+                            )
+                            if (cents != null) vm.completeList(l.id, cents)
+                        },
+                        color = Mint
+                    )
+                }
+            }
+        }
+
+        item {
+            ComicButton("DELETE LIST", { vm.deleteList(l) { onBack() } }, color = Coral, compact = true)
+        }
+    }
+}
+
+@Composable
+private fun ItemRow(
+    vm: MainViewModel,
+    item: ShoppingItem,
+    currency: String,
+    photo: com.payandplan.app.data.Attachment?
+) {
+    val context = LocalContext.current
+    var price by remember(item.id, item.priceCents) {
+        mutableStateOf(item.priceCents?.let { Format.centsToInput(it) } ?: "")
+    }
+    val pendingShot = remember { arrayOfNulls<java.io.File>(1) }
+
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val file = pendingShot[0]
+        if (ok && file != null && file.exists()) vm.attachItemPhoto(item.id, file)
+    }
+    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val file = FileStore.newCameraFile(context)
+            pendingShot[0] = file
+            takePhoto.launch(FileStore.uriFor(context, file))
+        }
+    }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.attachPhotoFromUri(item.id, uri)
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Checkbox(
+            checked = item.checked,
+            onCheckedChange = { vm.updateItem(item.copy(checked = it)) },
+            colors = CheckboxDefaults.colors(checkedColor = Mint, checkmarkColor = Ink, uncheckedColor = Ink)
+        )
+        if (photo != null) {
+            AsyncImage(
+                model = vm.attachmentSource(photo),
+                contentDescription = item.text,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(2.dp, Ink, RoundedCornerShape(10.dp))
+                    .clickable { openAttachment(context, photo, vm.attachmentSource(photo) as? String ?: "") }
+            )
+            Box(Modifier.size(8.dp))
+        }
+        Text(
+            item.text,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                textDecoration = if (item.checked) TextDecoration.LineThrough else null
+            ),
+            color = Ink,
+            modifier = Modifier.weight(1f)
+        )
+        ComicIconButton(
+            Icons.Filled.PhotoCamera,
+            {
+                if (photo == null) askCamera.launch(android.Manifest.permission.CAMERA)
+                else pickPhoto.launch(arrayOf("image/*"))
+            },
+            color = if (photo == null) Paper else Mint,
+            size = 30.dp,
+            contentDescription = "Photo of the product"
+        )
+        Box(Modifier.size(80.dp, 56.dp)) {
+            ComicField(
+                price,
+                {
+                    price = it
+                    vm.updateItem(item.copy(priceCents = Format.parseAmountToCents(it)))
+                },
+                currency,
+                Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            )
+        }
+        ComicIconButton(
+            Icons.Filled.Close, { vm.deleteItem(item) },
+            color = Paper, size = 30.dp, contentDescription = "Remove"
+        )
+    }
+}
+
+@Composable
+fun ListEditScreen(
+    vm: MainViewModel,
+    listId: String?,
+    onBack: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val context = LocalContext.current
+    val existing by (if (listId != null) vm.shoppingList(listId) else kotlinx.coroutines.flow.flowOf(null))
+        .collectAsState(initial = null)
+
+    var loaded by remember { mutableStateOf(listId == null) }
+    var title by remember { mutableStateOf("") }
+    var assignee by remember { mutableStateOf<String?>(vm.myUserId()) }
+    var date by remember { mutableStateOf(LocalDate.now()) }
+    var timeMinutes by remember { mutableStateOf(18 * 60) }
+    var budget by remember { mutableStateOf("") }
+    var isPrivate by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(existing?.id) {
+        val e = existing
+        if (e != null && !loaded) {
+            title = e.title
+            assignee = e.assignedToUserId
+            date = e.dueDate?.let { LocalDate.ofEpochDay(it) } ?: LocalDate.now()
+            timeMinutes = e.dueTimeMinutes
+            budget = e.budgetCents?.let { Format.centsToInput(it) } ?: ""
+            isPrivate = e.visibility == Visibility.PRIVATE
+            loaded = true
+        }
+    }
+
+    LazyColumn(
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 60.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ComicIconButton(Icons.Filled.ArrowBack, onBack, color = Yellow, size = 42.dp, contentDescription = "Back")
+                Box(Modifier.size(10.dp))
+                Text(
+                    if (listId == null) "NEW LIST" else "EDIT LIST",
+                    style = MaterialTheme.typography.displaySmall.copy(fontFamily = PosterFont),
+                    color = Ink
+                )
+            }
+        }
+
+        item {
+            ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
+                ComicField(title, { title = it }, "Title (weekly shop, pharmacy...)", Modifier.fillMaxWidth())
+                Box(Modifier.height(10.dp))
+                Text("WHO DOES IT", style = MaterialTheme.typography.labelMedium, color = Ink)
+                Box(Modifier.height(6.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    vm.members().chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { m ->
+                                ComicChip(
+                                    text = m.name + if (m.id == vm.myUserId()) " (you)" else "",
+                                    selected = assignee == m.id,
+                                    onClick = { assignee = m.id },
+                                    color = Mint
+                                )
+                            }
+                        }
+                    }
+                    ComicChip("Anyone", assignee == null, { assignee = null }, color = Sky)
+                }
+                Box(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ComicButton(Format.day(date), {
+                        DatePickerDialog(
+                            context,
+                            { _, y, m, d -> date = LocalDate.of(y, m + 1, d) },
+                            date.year, date.monthValue - 1, date.dayOfMonth
+                        ).show()
+                    }, color = Yellow, compact = true)
+                    ComicButton(Format.time(timeMinutes), {
+                        TimePickerDialog(
+                            context,
+                            { _, h, min -> timeMinutes = h * 60 + min },
+                            timeMinutes / 60, timeMinutes % 60, true
+                        ).show()
+                    }, color = Yellow, compact = true)
+                }
+                Box(Modifier.height(10.dp))
+                ComicField(
+                    budget, { budget = it }, "Budget (optional)",
+                    Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
+                Box(Modifier.height(6.dp))
+                ComicChip(
+                    if (isPrivate) "🔒 Private" else "👥 Shared",
+                    selected = true,
+                    onClick = { isPrivate = !isPrivate },
+                    color = if (isPrivate) Coral else Mint
+                )
+            }
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ComicButton(
+                    text = if (listId == null) "CREATE" else "SAVE",
+                    onClick = {
+                        val base = existing ?: ShoppingList()
+                        vm.saveList(
+                            base.copy(
+                                title = title.trim(),
+                                assignedToUserId = assignee,
+                                dueDate = date.toEpochDay(),
+                                dueTimeMinutes = timeMinutes,
+                                budgetCents = Format.parseAmountToCents(budget),
+                                visibility = if (isPrivate) Visibility.PRIVATE else Visibility.SHARED
+                            )
+                        ) { onSaved() }
+                    },
+                    color = Mint,
+                    enabled = title.isNotBlank()
+                )
+                ComicButton("CANCEL", onBack, color = Paper)
+            }
+        }
+    }
+}

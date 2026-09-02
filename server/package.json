@@ -1,0 +1,22 @@
+{
+  "name": "payandplan-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pay & Plan sync server: accounts, shared calendars, payments, attachments",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --experimental-sqlite src/index.js",
+    "dev": "node --watch --experimental-sqlite src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.3.0"
+  }
+}

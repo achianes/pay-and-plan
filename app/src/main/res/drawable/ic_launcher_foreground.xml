@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- calendar body -->
+    <path android:fillColor="#FF6B6B"
+        android:pathData="M28,34h52a6,6 0 0 1 6,6v40a6,6 0 0 1 -6,6h-52a6,6 0 0 1 -6,-6v-40a6,6 0 0 1 6,-6z"
+        android:strokeColor="#1B1B1B" android:strokeWidth="3.5"/>
+    <!-- header strip -->
+    <path android:fillColor="#1B1B1B"
+        android:pathData="M22,44v-4a6,6 0 0 1 6,-6h52a6,6 0 0 1 6,6v4z"/>
+    <!-- rings -->
+    <path android:fillColor="#FFD93D" android:strokeColor="#1B1B1B" android:strokeWidth="3"
+        android:pathData="M38,24m-4,0a4,4 0 1,0 8,0a4,4 0 1,0 -8,0"/>
+    <path android:fillColor="#FFD93D" android:strokeColor="#1B1B1B" android:strokeWidth="3"
+        android:pathData="M70,24m-4,0a4,4 0 1,0 8,0a4,4 0 1,0 -8,0"/>
+    <path android:strokeColor="#1B1B1B" android:strokeWidth="4" android:pathData="M38,20v14"/>
+    <path android:strokeColor="#1B1B1B" android:strokeWidth="4" android:pathData="M70,20v14"/>
+    <!-- coin -->
+    <path android:fillColor="#FFD93D" android:strokeColor="#1B1B1B" android:strokeWidth="3.5"
+        android:pathData="M54,64m-16,0a16,16 0 1,0 32,0a16,16 0 1,0 -32,0"/>
+    <path android:strokeColor="#1B1B1B" android:strokeWidth="4" android:strokeLineCap="round"
+        android:pathData="M60,57c-2,-2 -5,-3 -8,-1c-4,2 -4,14 0,16c3,2 6,1 8,-1"/>
+    <path android:strokeColor="#1B1B1B" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M45,61h12M45,67h12"/>
+</vector>
