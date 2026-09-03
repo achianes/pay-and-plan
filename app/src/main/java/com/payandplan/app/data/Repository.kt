@@ -468,17 +468,17 @@ class Repository(
 
     suspend fun addItem(listId: String, text: String) {
         val count = shopping.getItems(listId).size
-        shopping.upsertItem(
-            ShoppingItem(
-                listId = listId,
-                calendarId = _calendarId.value,
-                text = text.trim(),
-                sortIndex = count,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis(),
-                pendingSync = true
-            )
+        val item = ShoppingItem(
+            listId = listId,
+            calendarId = _calendarId.value,
+            text = text.trim(),
+            sortIndex = count,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+            pendingSync = true
         )
+        shopping.upsertItem(item)
+        inheritPhoto(item)
         syncQuietly()
     }
 
@@ -506,6 +506,26 @@ class Repository(
         }
         syncQuietly()
         return found?.first
+    }
+
+    /**
+     * The household's picture cache: a product bought before keeps its face. The newest
+     * other item with the same name and a photo lends it, through a server side copy.
+     */
+    private suspend fun inheritPhoto(item: ShoppingItem) {
+        val wanted = item.text.trim().lowercase()
+        if (wanted.isBlank()) return
+        val twins = shopping.itemsNamed(_calendarId.value, item.id)
+            .filter { it.text.trim().lowercase() == wanted }
+            .sortedByDescending { it.updatedAt }
+        for (twin in twins) {
+            if (attachments.forItem(twin.id).isEmpty()) continue
+            val copied = runCatching { api.copyItemPhoto(_calendarId.value, item.id, twin.id) }.getOrNull()
+            if (copied != null) {
+                attachments.insert(copied)
+                return
+            }
+        }
     }
 
     suspend fun updateItem(item: ShoppingItem) {
@@ -653,6 +673,8 @@ class Repository(
         }
         sync()
     }
+
+    fun calendarIdNow(): String = _calendarId.value
 
     fun switchCalendar(id: String) {
         prefs.calendarId = id

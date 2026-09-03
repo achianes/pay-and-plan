@@ -177,6 +177,8 @@ for (const [table, column, ddl] of [
   ['payments', 'kind', "ALTER TABLE payments ADD COLUMN kind TEXT NOT NULL DEFAULT 'BILL'"],
   ['payments', 'location', "ALTER TABLE payments ADD COLUMN location TEXT NOT NULL DEFAULT ''"],
   ['payments', 'duration_minutes', 'ALTER TABLE payments ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0'],
+  ['payments', 'latitude', 'ALTER TABLE payments ADD COLUMN latitude REAL'],
+  ['payments', 'longitude', 'ALTER TABLE payments ADD COLUMN longitude REAL'],
   ['shopping_lists', 'due_time_minutes', 'ALTER TABLE shopping_lists ADD COLUMN due_time_minutes INTEGER NOT NULL DEFAULT 1080'],
   ['attachments', 'item_id', 'ALTER TABLE attachments ADD COLUMN item_id TEXT'],
   ['attachments', 'note_id', 'ALTER TABLE attachments ADD COLUMN note_id TEXT']

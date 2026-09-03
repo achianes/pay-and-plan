@@ -21,8 +21,9 @@ object GoogleCalendarShare {
         "jan" to 1, "may" to 5, "jun" to 6, "jul" to 7, "aug" to 8, "sep" to 9, "oct" to 10, "dec" to 12
     )
     private val urlPattern = Regex("""https?://\S+""")
-    private val dayFirst = Regex("""\b(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?\s+(\d{4})""")
-    private val monthFirst = Regex("""\b([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})""")
+    // the year is optional: Google leaves it out for the current year
+    private val dayFirst = Regex("""\b(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?(?:\s+(\d{4}))?""")
+    private val monthFirst = Regex("""\b([A-Za-z]{3,})\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\b""")
     private val numeric = Regex("""\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b""")
     private val timePattern = Regex("""\b(\d{1,2})[:.](\d{2})\s*(am|pm|AM|PM)?""")
     private val boilerplate = listOf(
@@ -90,13 +91,13 @@ object GoogleCalendarShare {
 
     /** "4 settembre 2026", "Sep 4, 2026" or "04/09/2026"; null when the line holds no date. */
     private fun dateOf(line: String): LocalDate? {
-        dayFirst.find(line)?.let { m ->
-            val month = months[m.groupValues[2].lowercase().take(3)] ?: return@let
-            return safeDate(m.groupValues[3].toInt(), month, m.groupValues[1].toInt())
+        for (m in dayFirst.findAll(line)) {
+            val month = months[m.groupValues[2].lowercase().take(3)] ?: continue
+            return safeDate(yearOrGuess(m.groupValues[3], month, m.groupValues[1].toInt()), month, m.groupValues[1].toInt())
         }
-        monthFirst.find(line)?.let { m ->
-            val month = months[m.groupValues[1].lowercase().take(3)] ?: return@let
-            return safeDate(m.groupValues[3].toInt(), month, m.groupValues[2].toInt())
+        for (m in monthFirst.findAll(line)) {
+            val month = months[m.groupValues[1].lowercase().take(3)] ?: continue
+            return safeDate(yearOrGuess(m.groupValues[3], month, m.groupValues[2].toInt()), month, m.groupValues[2].toInt())
         }
         numeric.find(line)?.let { m ->
             return safeDate(m.groupValues[3].toInt(), m.groupValues[2].toInt(), m.groupValues[1].toInt())
@@ -106,4 +107,20 @@ object GoogleCalendarShare {
 
     private fun safeDate(y: Int, m: Int, d: Int): LocalDate? =
         runCatching { LocalDate.of(y, m, d) }.getOrNull()
+
+    /** No year printed: this year, unless that day is already well behind us. */
+    private fun yearOrGuess(printed: String, month: Int, day: Int): Int {
+        if (printed.isNotBlank()) return printed.toInt()
+        val today = LocalDate.now()
+        val thisYear = safeDate(today.year, month, day) ?: return today.year
+        return if (thisYear.isBefore(today.minusDays(45))) today.year + 1 else today.year
+    }
+
+    /** The share was just a link: nothing to read locally, the server has to follow it. */
+    fun linkOnly(text: String): String? {
+        val links = urlPattern.findAll(text).map { it.value }.toList()
+        val rest = urlPattern.replace(text, "").trim()
+        val calendarLink = links.firstOrNull { it.contains("calendar.google.com") || it.contains("calendar.app.google") }
+        return if (calendarLink != null && rest.length < 4) calendarLink else null
+    }
 }

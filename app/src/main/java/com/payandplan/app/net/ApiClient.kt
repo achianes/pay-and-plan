@@ -27,6 +27,9 @@ class ApiException(message: String, val code: Int = 0) : Exception(message)
 
 data class AuthResult(val token: String, val userId: String, val name: String, val email: String)
 
+/** A place found on the map. */
+data class Place(val name: String, val lat: Double, val lon: Double)
+
 /** What the server read off a photographed till receipt. */
 data class ReceiptItem(val name: String, val quantity: String, val priceCents: Long?)
 data class ReceiptResult(
@@ -298,6 +301,44 @@ class ApiClient(private val prefs: Prefs) {
         return label to attachment
     }
 
+    /** Free text address -> places on OpenStreetMap, through the server. */
+    suspend fun searchPlaces(query: String): List<Place> {
+        val json = JSONObject(request("GET", "/api/places?q=" + java.net.URLEncoder.encode(query, "UTF-8")))
+        return json.getJSONArray("places").mapObjects {
+            Place(it.optString("name"), it.optDouble("lat"), it.optDouble("lon"))
+        }
+    }
+
+    /** A shared Google Calendar link -> the event behind it, or null when the page hides it. */
+    suspend fun resolveEventLink(calendarId: String, url: String): com.payandplan.app.util.CalendarEvent? {
+        val text = try {
+            request("POST", "/api/calendars/$calendarId/resolve-event", JSONObject().put("url", url))
+        } catch (e: ApiException) {
+            if (e.code == 404) return null
+            throw e
+        }
+        val j = JSONObject(text)
+        if (j.isNull("epochDay")) return null
+        return com.payandplan.app.util.CalendarEvent(
+            title = j.optString("title").ifBlank { "Event" },
+            epochDay = j.getLong("epochDay"),
+            minutesOfDay = j.optInt("minutes", 9 * 60),
+            location = j.optString("location"),
+            notes = listOf("Shared from Google Calendar", url, j.optString("notes")).filter { it.isNotBlank() }.joinToString("\n")
+        )
+    }
+
+    /** Copies another item's photo onto this one; null when the source has none. */
+    suspend fun copyItemPhoto(calendarId: String, itemId: String, sourceItemId: String): Attachment? {
+        val text = try {
+            request("POST", "/api/calendars/$calendarId/items/$itemId/photo-from/$sourceItemId", JSONObject())
+        } catch (e: ApiException) {
+            if (e.code == 404) return null
+            throw e
+        }
+        return attachmentOf(JSONObject(text), calendarId)
+    }
+
     /** STOP pressed: tells the server to drop the model call for that job. */
     suspend fun stopReceipt(jobId: String) {
         request("POST", "/api/receipt-jobs/$jobId/stop", JSONObject())
@@ -410,6 +451,8 @@ class ApiClient(private val prefs: Prefs) {
         kind = j.optString("kind", "BILL"),
         location = j.optString("location"),
         durationMinutes = j.optInt("durationMinutes"),
+        latitude = if (j.isNull("latitude")) null else j.optDouble("latitude"),
+        longitude = if (j.isNull("longitude")) null else j.optDouble("longitude"),
         createdAt = j.optLong("createdAt"),
         updatedAt = j.optLong("updatedAt"),
         deletedAt = j.longOrNull("deletedAt"),
@@ -446,6 +489,8 @@ class ApiClient(private val prefs: Prefs) {
         .put("kind", p.kind)
         .put("location", p.location)
         .put("durationMinutes", p.durationMinutes)
+        .put("latitude", p.latitude ?: JSONObject.NULL)
+        .put("longitude", p.longitude ?: JSONObject.NULL)
         .put("createdAt", p.createdAt)
         .put("updatedAt", p.updatedAt)
         .put("deletedAt", p.deletedAt)

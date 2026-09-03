@@ -90,6 +90,9 @@ data class Payment(
     val kind: String = EntryKind.BILL.name,
     val location: String = "",
     val durationMinutes: Int = 0,
+    /** where the appointment is, when it was picked on the map */
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val createdAt: Long = 0L,
     val updatedAt: Long = 0L,
     val deletedAt: Long? = null,

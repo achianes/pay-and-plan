@@ -42,9 +42,13 @@ Everything is offline first: you keep using it on the train, and it catches up w
 
 ### Time
 - **Appointments** — doctor, gym, the school meeting — with a time, a duration, a place and an optional cost.
+  The place can be **picked on the map** (OpenStreetMap search); the appointment then opens straight in your
+  maps app, and the web app shows the spot inline.
 - **Reminders** — a note with a deadline ("send the tax papers by the 10th") rather than a meeting.
-- Anything shared **from a calendar app** (`.ics`, an invitation, a pasted `VEVENT`) is read and lands in the
-  calendar as a reminder with its date, time, place and description already filled in.
+- Anything shared **from a calendar app** (`.ics`, an invitation, a pasted `VEVENT`, or the few lines of text
+  Google Calendar shares) is read and lands in the calendar as a reminder with its date, time, place and
+  description already filled in. A bare Google Calendar link is followed by the server, which reads the
+  event when the link exposes it.
 
 ### The household
 - **Shared calendars.** Join with a six letter code; everyone sees the same month.
@@ -57,6 +61,10 @@ Everything is offline first: you keep using it on the train, and it catches up w
   [Open Food Facts](https://it.openfoodfacts.org) (Italian edition) and lands on the list with its name, brand,
   pack size and a small picture next to it. Works on Android (Google's scanner) and in the web app on iPhone
   (camera in the page); a number can also be typed by hand.
+- **Products keep their face.** Every photo — from the food database or from your camera — is remembered
+  by product name: type "Nutella" again next month and the picture comes back on its own.
+- **Mosaic view** of a list: every product as a photo tile, one tap ticks it, another untick it. Handy
+  in the shop with one hand on the trolley.
 - **Already shopped? Photograph the receipt.** A vision model on your own [Ollama](https://ollama.com) server
   reads it and hands back a list that is already ticked and priced, with the shop as the title and the total
   as the budget; the picture stays on that day as the receipt. A full screen progress card with a STOP

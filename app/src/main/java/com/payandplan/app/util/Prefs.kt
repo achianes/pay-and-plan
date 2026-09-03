@@ -46,6 +46,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("receipts_enabled", false)
         set(v) = sp.edit().putBoolean("receipts_enabled", v).apply()
 
+    /** Shopping list shown as photo tiles instead of rows. */
+    var listMosaic: Boolean
+        get() = sp.getBoolean("list_mosaic", false)
+        set(v) = sp.edit().putBoolean("list_mosaic", v).apply()
+
     var schemaVersion: Int
         get() = sp.getInt("schema_version", 0)
         set(v) = sp.edit().putInt("schema_version", v).apply()

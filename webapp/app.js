@@ -37,6 +37,7 @@ const state = {
   calendars: safeParse(localStorage.getItem(LS.calendars)) || [],
   calendarId: localStorage.getItem(LS.calendarId) || '',
   features: safeParse(localStorage.getItem(LS.features)) || {},
+  listView: localStorage.getItem('pp.listView') || 'list',
   data: { payments: [], dayNotes: [], attachments: [], shoppingLists: [], shoppingItems: [], notes: [] },
   dirty: new Set(),
   view: 'calendar',
@@ -344,6 +345,8 @@ function newPayment(fields) {
     shoppingListId: null,
     kind: 'BILL',
     location: '',
+    latitude: null,
+    longitude: null,
     durationMinutes: 0,
     createdAt: stamp,
     updatedAt: stamp,
@@ -1319,7 +1322,15 @@ function billEditor(existing, presetDay, preset = null) {
     </datalist>
     <div id="where-wrap" class="${appt ? '' : 'hidden'}">
       <label>Where</label>
-      <input id="f-location" value="${esc(p.location || '')}" placeholder="Address, clinic, studio..." />
+      <input id="f-location" value="${esc(p.location || '')}" placeholder="Address, clinic, studio..."
+             oninput="document.getElementById('f-lat').value='';document.getElementById('f-lon').value='';document.getElementById('pin-note').textContent=''" />
+      <input type="hidden" id="f-lat" value="${p.latitude ?? ''}" />
+      <input type="hidden" id="f-lon" value="${p.longitude ?? ''}" />
+      <div class="row" style="margin-bottom:8px">
+        <button class="sky small" type="button" data-act="find-place">🗺 FIND ON THE MAP</button>
+        <small id="pin-note" class="muted">${p.latitude != null ? '📍 pinned' : ''}</small>
+      </div>
+      <div id="place-results" class="row wrap"></div>
     </div>
     <label id="date-label">${reminder ? 'Complete by' : 'Day'}</label>
     <input id="f-date" type="date" value="${inputDate(fromEpochDay(p.dueDate))}" />
@@ -1408,6 +1419,11 @@ function billDetail(id) {
       <div class="poster" style="font-size:34px">${isAppointment(p) && !p.amountCents ? timeLabel(p.dueTimeMinutes) : money(p.amountCents, p.currency)}</div>
       <div>${esc(fullDayLabel(d))}${isAppointment(p) ? ' · ' + timeLabel(p.dueTimeMinutes) : ''}</div>
       ${isAppointment(p) && p.location ? `<div>📍 ${esc(p.location)}</div>` : ''}
+      ${isAppointment(p) && p.latitude != null && p.longitude != null ? `
+        <a class="chip" style="display:inline-block;margin-top:6px;background:var(--sky)" target="_blank" rel="noopener"
+           href="https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=17/${p.latitude}/${p.longitude}">🗺 Open the map</a>
+        <iframe class="map" loading="lazy" referrerpolicy="no-referrer"
+          src="https://www.openstreetmap.org/export/embed.html?bbox=${p.longitude - 0.004}%2C${p.latitude - 0.0025}%2C${p.longitude + 0.004}%2C${p.latitude + 0.0025}&layer=mapnik&marker=${p.latitude}%2C${p.longitude}"></iframe>` : ''}
       <small>${p.installmentCount ? `Installment ${p.installmentIndex}/${p.installmentCount} · ` : ''}${recurrenceLabel(p.recurrence)}${owner ? ' · ' + esc(owner.name) : ''}${p.visibility === 'PRIVATE' ? ' · 🔒 private' : ''}</small>
       <div style="height:8px"></div>
       <span class="stamp" style="background:${isPaid(p) ? 'var(--mint)' : late ? 'var(--coral)' : 'var(--yellow)'}">
@@ -1540,10 +1556,27 @@ function listDetail(id) {
   const onList = new Set(items.map((i) => (i.text || '').toLowerCase()))
   const vocabulary = itemVocabulary()
   const usual = vocabulary.filter((v) => !onList.has(v.toLowerCase())).slice(0, 8)
+  const mosaic = state.listView === 'mosaic'
   openModal(`
     <h2>${esc(l.title)}</h2>
     <small class="muted">${who ? 'For ' + esc(who.name) : 'Anyone can do it'}${l.dueDate ? ' · ' + dayLabel(fromEpochDay(l.dueDate)) : ''}${l.budgetCents ? ' · budget ' + money(l.budgetCents) : ''}</small>
-    <div class="card">
+    <div class="row" style="margin:8px 0">
+      <button class="chip ${mosaic ? '' : 'on'}" data-act="list-view" data-view="list" data-list="${l.id}"
+        style="background:${mosaic ? 'var(--paper)' : 'var(--yellow)'}">☰ List</button>
+      <button class="chip ${mosaic ? 'on' : ''}" data-act="list-view" data-view="mosaic" data-list="${l.id}"
+        style="background:${mosaic ? 'var(--yellow)' : 'var(--paper)'}">▦ Mosaic</button>
+    </div>
+    ${mosaic ? `<div class="mosaic">
+      ${items.map((i) => {
+        const photo = itemPhoto(i.id)
+        return `<div class="tile ${i.checked ? 'done' : ''}" data-act="toggle-item" data-id="${i.id}">
+          ${photo ? `<img src="${fileUrl(photo)}" alt="">` : `<div class="noface">🛒</div>`}
+          <div class="name">${esc(i.text)}</div>
+          <div class="tick">✓</div>
+        </div>`
+      }).join('') || '<small class="muted">Empty list.</small>'}
+    </div>` : ''}
+    <div class="card ${mosaic ? 'hidden' : ''}">
       <ul class="items">
         ${items.map((i) => {
           const photo = itemPhoto(i.id)
@@ -2014,7 +2047,31 @@ async function handle(act, el) {
       }
       state.data.shoppingItems.push(item)
       touch('shoppingItems', item)
+      inheritPhoto(item)
       closeModals(); return listDetail(listId)
+    }
+    case 'toggle-item': {
+      const item = state.data.shoppingItems.find((i) => i.id === id)
+      item.checked = !item.checked
+      touch('shoppingItems', item)
+      persist()
+      const tile = el
+      tile.classList.toggle('done', item.checked)
+      return
+    }
+    case 'list-view': {
+      state.listView = el.dataset.view
+      try { localStorage.setItem('pp.listView', state.listView) } catch { /* fine */ }
+      closeModals(); return listDetail(el.dataset.list)
+    }
+    case 'find-place': return findPlace()
+    case 'pick-place': {
+      document.getElementById('f-location').value = el.dataset.name
+      document.getElementById('f-lat').value = el.dataset.lat
+      document.getElementById('f-lon').value = el.dataset.lon
+      document.getElementById('pin-note').textContent = '📍 pinned'
+      document.getElementById('place-results').innerHTML = ''
+      return
     }
     case 'scan-item': return barcodeSheet(el.dataset.list)
     case 'lookup-barcode': {
@@ -2033,6 +2090,7 @@ async function handle(act, el) {
       }
       state.data.shoppingItems.push(item)
       touch('shoppingItems', item)
+      inheritPhoto(item)
       const listId = el.dataset.list
       closeModals()
       listDetail(listId)
@@ -2171,6 +2229,8 @@ function saveBill(existingId) {
     title,
     amountCents: reminder ? 0 : (cents ?? (planValues ? planValues[0] : 0) ?? 0),
     location: document.getElementById('f-location')?.value.trim() || '',
+    latitude: Number(document.getElementById('f-lat')?.value) || null,
+    longitude: Number(document.getElementById('f-lon')?.value) || null,
     category: document.getElementById('f-category')?.value.trim() || '',
     dueDate: epochDay(new Date(document.getElementById('f-date').value)),
     dueTimeMinutes: hh * 60 + mm,
@@ -2303,6 +2363,56 @@ async function importReceipt(file) {
   render()
   listDetail(l.id)
   toast(`${r.items.length} items, ${money(r.totalCents)}`)
+}
+
+// ---------------------------------------------------------------- product photos
+
+/** Another item with the same name and a photo, anywhere in the household's lists. */
+function photoTwin(item) {
+  const wanted = (item.text || '').trim().toLowerCase()
+  if (!wanted) return null
+  const twins = state.data.shoppingItems
+    .filter((i) => i.id !== item.id && !i.deletedAt && (i.text || '').trim().toLowerCase() === wanted)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+  for (const twin of twins) {
+    const photo = itemPhoto(twin.id)
+    if (photo) return twin
+  }
+  return null
+}
+
+/** A product bought before keeps its face: copy the photo onto the new item. */
+async function inheritPhoto(item) {
+  const twin = photoTwin(item)
+  if (!twin) return
+  try {
+    const saved = await api(`/api/calendars/${state.calendarId}/items/${item.id}/photo-from/${twin.id}`, { method: 'POST' })
+    if (!state.data.attachments.some((x) => x.id === saved.id)) state.data.attachments.push(saved)
+    persist()
+    // the sheet is already open: refresh it in place if it is this list
+    if (document.querySelector('.modal') && document.getElementById('new-item')) { closeModals(); listDetail(item.listId) }
+  } catch { /* no photo is not a problem */ }
+}
+
+// ---------------------------------------------------------------- places
+
+/** The typed address against OpenStreetMap; the matches become chips to pick from. */
+async function findPlace() {
+  const q = document.getElementById('f-location')?.value.trim()
+  const box = document.getElementById('place-results')
+  if (!q || !box) return toast('Type an address first')
+  box.innerHTML = '<small class="muted">Looking on the map…</small>'
+  try {
+    const out = await api(`/api/places?q=${encodeURIComponent(q)}`)
+    if (!out.places.length) { box.innerHTML = '<small class="muted">Nothing found. Add the town?</small>'; return }
+    box.innerHTML = out.places.map((pl) =>
+      `<span class="chip" data-act="pick-place" data-name="${esc(pl.name)}" data-lat="${pl.lat}" data-lon="${pl.lon}"
+             style="background:var(--paper)">📍 ${esc(pl.name)}</span>`).join('')
+    wire(box)   // clicks are bound per element, and these were born after the render
+  } catch (e) {
+    box.innerHTML = ''
+    toast(e.message)
+  }
 }
 
 // ---------------------------------------------------------------- barcode
@@ -2467,20 +2577,31 @@ function looksLikeGoogleCalendar(text) {
 function parseGoogleCalendarShare(text) {
   const urlRe = /https?:\/\/\S+/g
   const links = text.match(urlRe) || []
+  // the share was only a link: nothing to read here, the server has to follow it
+  const calendarLink = links.find((l) => /calendar\.google\.com|calendar\.app\.google/.test(l))
+  if (calendarLink && text.replace(urlRe, '').trim().length < 4) return { linkOnly: calendarLink }
   const lines = text.replace(/\r/g, '').split('\n')
     .map((l) => l.replace(urlRe, '').replace(/[⋅·]/g, ' ').trim())
     .filter(Boolean)
   if (!lines.length) return null
 
+  // no year printed: this year, unless that day is already well behind us
+  const yearOrGuess = (printed, month, day) => {
+    if (printed) return Number(printed)
+    const now = new Date()
+    const candidate = new Date(now.getFullYear(), month - 1, day)
+    return candidate < new Date(now.getTime() - 45 * 86400000) ? now.getFullYear() + 1 : now.getFullYear()
+  }
   const dateOf = (line) => {
-    let m = line.match(/\b(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?\s+(\d{4})/)
-    if (m && GCAL_MONTHS[m[2].slice(0, 3).toLowerCase()]) {
-      return new Date(Number(m[3]), GCAL_MONTHS[m[2].slice(0, 3).toLowerCase()] - 1, Number(m[1]))
+    for (const m of line.matchAll(/\b(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?(?:\s+(\d{4}))?/g)) {
+      const month = GCAL_MONTHS[m[2].slice(0, 3).toLowerCase()]
+      if (month) return new Date(yearOrGuess(m[3], month, Number(m[1])), month - 1, Number(m[1]))
     }
-    m = line.match(/\b([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})/)
-    if (m && GCAL_MONTHS[m[1].slice(0, 3).toLowerCase()]) {
-      return new Date(Number(m[3]), GCAL_MONTHS[m[1].slice(0, 3).toLowerCase()] - 1, Number(m[2]))
+    for (const m of line.matchAll(/\b([A-Za-z]{3,})\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\b/g)) {
+      const month = GCAL_MONTHS[m[1].slice(0, 3).toLowerCase()]
+      if (month) return new Date(yearOrGuess(m[3], month, Number(m[2])), month - 1, Number(m[2]))
     }
+    let m
     m = line.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/)
     if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
     return null
@@ -2553,7 +2674,17 @@ async function collectShare() {
     // an event from Google Calendar belongs in the calendar as a reminder, not in a note
     const shared = [meta.title, meta.text, meta.url].filter(Boolean).join('\n')
     if (!files.length && looksLikeGoogleCalendar(shared)) {
-      const event = parseGoogleCalendarShare(shared)
+      let event = parseGoogleCalendarShare(shared)
+      if (event?.linkOnly) {
+        toast('Reading the event…')
+        event = await api(`/api/calendars/${state.calendarId}/resolve-event`,
+          { method: 'POST', body: JSON.stringify({ url: event.linkOnly }) })
+          .then((r) => r.epochDay == null ? null : ({
+            kind: 'REMINDER', title: r.title || 'Event', dueDate: r.epochDay, dueTimeMinutes: r.minutes ?? 540,
+            location: r.location || '', notes: ['Shared from Google Calendar', event.linkOnly, r.notes].filter(Boolean).join('\n')
+          }))
+          .catch(() => null)
+      }
       if (event) {
         state.view = 'calendar'
         state.selected = fromEpochDay(event.dueDate)

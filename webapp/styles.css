@@ -230,6 +230,42 @@ label { font-weight: 700; font-size: 14px; display: block; margin-top: 6px; }
 .day .mark.l { left: 3px; }
 .day .mark.r { right: 3px; }
 
+/* ---------------------------------------------------------------- mosaic */
+
+.mosaic {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px;
+}
+.mosaic .tile {
+  position: relative; aspect-ratio: 1;
+  border: 3px solid var(--ink); border-radius: 16px; overflow: hidden;
+  background: var(--paper); box-shadow: 4px 4px 0 var(--ink);
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+.mosaic .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mosaic .tile .noface { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+.mosaic .tile .name {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 4px 6px; font-size: 12px; line-height: 1.15;
+  background: rgba(255, 246, 229, .92); border-top: 2px solid var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mosaic .tile .tick {
+  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px;
+  border-radius: 50%; border: 2px solid var(--ink); background: var(--mint);
+  display: none; align-items: center; justify-content: center;
+  font-family: Poster, sans-serif; font-size: 18px;
+}
+.mosaic .tile.done { opacity: .6; }
+.mosaic .tile.done img, .mosaic .tile.done .noface { filter: grayscale(.7); }
+.mosaic .tile.done .tick { display: flex; }
+
+/* ---------------------------------------------------------------- map */
+
+iframe.map {
+  width: 100%; height: 180px; border: 3px solid var(--ink); border-radius: 14px;
+  margin-top: 8px; background: var(--paper);
+}
+
 /* ---------------------------------------------------------------- barcode scanner */
 
 #scan-view {

@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
     private var pendingPayment by mutableStateOf<Pair<String, Boolean>?>(null)
     private var pendingShare by mutableStateOf<SharedContent?>(null)
     private var pendingEvent by mutableStateOf<CalendarEvent?>(null)
+    private var pendingLink by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,7 +103,9 @@ class MainActivity : ComponentActivity() {
                     share = pendingShare,
                     onShareConsumed = { pendingShare = null },
                     event = pendingEvent,
-                    onEventConsumed = { pendingEvent = null }
+                    onEventConsumed = { pendingEvent = null },
+                    eventLink = pendingLink,
+                    onEventLinkConsumed = { pendingLink = null }
                 )
             }
         }
@@ -143,6 +146,7 @@ class MainActivity : ComponentActivity() {
             pendingEvent = event
             return
         }
+        if (pendingLink != null) return
 
         if (uris.isEmpty() && text.isBlank() && subject.isBlank()) return
 
@@ -160,6 +164,11 @@ class MainActivity : ComponentActivity() {
         }
         // Google Calendar shares a few lines of text and a link rather than an .ics
         if (GoogleCalendarShare.looksLikeGoogleCalendar(text)) {
+            // a bare link says nothing by itself: the server follows it and reads the event
+            GoogleCalendarShare.linkOnly(text)?.let { link ->
+                pendingLink = link
+                return null
+            }
             GoogleCalendarShare.parse(text)?.let { return it }
         }
         val looksLikeFile = mime != null &&
@@ -197,7 +206,9 @@ private fun Root(
     share: SharedContent? = null,
     onShareConsumed: () -> Unit = {},
     event: CalendarEvent? = null,
-    onEventConsumed: () -> Unit = {}
+    onEventConsumed: () -> Unit = {},
+    eventLink: String? = null,
+    onEventLinkConsumed: () -> Unit = {}
 ) {
     val vm: MainViewModel = viewModel()
     val nav = rememberNavController()
@@ -230,6 +241,20 @@ private fun Root(
         vm.offerEvent(e)
         nav.navigate("edit?id=&day=${e.epochDay}")
         onEventConsumed()
+    }
+
+    LaunchedEffect(eventLink) {
+        val link = eventLink ?: return@LaunchedEffect
+        onEventLinkConsumed()
+        val resolved = vm.resolveEventLink(link)
+        if (resolved != null) {
+            vm.offerEvent(resolved)
+            nav.navigate("edit?id=&day=${resolved.epochDay}")
+        } else {
+            // nothing readable behind the link: keep it as a note rather than lose it
+            vm.offerShare("Google Calendar event", link, emptyList())
+            nav.navigate("noteEdit?id=")
+        }
     }
 
     if (!signedIn) {

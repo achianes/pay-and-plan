@@ -11,6 +11,7 @@ import { config } from './config.js'
 import { unfurl, fetchImage } from './unfurl.js'
 import { readReceipt } from './receipt.js'
 import { lookupProduct, productImage } from './products.js'
+import { searchPlaces, resolveEventLink } from './places.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = config.port
@@ -29,6 +30,7 @@ const paymentColumns = [
   'notes', 'status', 'paid_at', 'paid_amount_cents', 'paid_by_user_id', 'remind_days_before',
   'nag_minutes', 'alarm_enabled', 'require_receipt', 'installment_index', 'installment_count',
   'created_by_user_id', 'visibility', 'shopping_list_id', 'kind', 'location', 'duration_minutes',
+  'latitude', 'longitude',
   'created_at', 'updated_at', 'deleted_at'
 ]
 
@@ -350,6 +352,8 @@ app.post('/api/calendars/:calendarId/sync', auth, requireMember, (req, res) => {
         shoppingListId: p.shoppingListId ?? null,
         kind: ['APPOINTMENT', 'INCOME', 'REMINDER'].includes(p.kind) ? p.kind : 'BILL',
         location: String(p.location || ''),
+        latitude: Number.isFinite(Number(p.latitude)) && p.latitude != null ? Number(p.latitude) : null,
+        longitude: Number.isFinite(Number(p.longitude)) && p.longitude != null ? Number(p.longitude) : null,
         durationMinutes: Number(p.durationMinutes || 0),
         createdAt: Number(p.createdAt || stamp),
         updatedAt: Number(p.updatedAt || stamp),
@@ -569,6 +573,54 @@ app.post('/api/calendars/:calendarId/products/lookup', auth, requireMember, asyn
     }
   }
   res.json({ product, attachment })
+})
+
+/**
+ * The household's picture cache: an item added by name gets the photo of the last item
+ * with that name, whether it came from the food database or from somebody's camera.
+ * The file is copied, so deleting one item's photo never blanks another's.
+ */
+app.post('/api/calendars/:calendarId/items/:itemId/photo-from/:sourceItemId', auth, requireMember, (req, res) => {
+  const source = db.prepare(
+    `SELECT * FROM attachments WHERE calendar_id = ? AND item_id = ? AND deleted_at IS NULL
+     ORDER BY created_at DESC LIMIT 1`
+  ).get(req.calendarId, req.params.sourceItemId)
+  if (!source) return res.status(404).json({ error: 'that item has no photo' })
+  const from = path.join(FILES_DIR, source.storage_name)
+  if (!fs.existsSync(from)) return res.status(404).json({ error: 'the photo file is gone' })
+
+  const id = uuid()
+  const storageName = `${id}${path.extname(source.storage_name) || '.jpg'}`
+  fs.copyFileSync(from, path.join(FILES_DIR, storageName))
+  const stamp = now()
+  db.prepare(
+    `INSERT INTO attachments
+      (id, calendar_id, owner_type, payment_id, epoch_day, item_id, note_id, file_name, mime,
+       size, storage_name, is_receipt, uploaded_by, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(id, req.calendarId, 'ITEM', null, null, req.params.itemId, null, source.file_name, source.mime,
+    source.size, storageName, 0, req.user.id, stamp, stamp)
+  res.json(rowOut(db.prepare('SELECT * FROM attachments WHERE id = ?').get(id)))
+})
+
+/** Address search on OpenStreetMap, for appointments that need a place. */
+app.get('/api/places', auth, async (req, res) => {
+  try {
+    res.json({ places: await searchPlaces(req.query.q) })
+  } catch (e) {
+    res.status(502).json({ error: e.message })
+  }
+})
+
+/** A shared Google Calendar link: what event is behind it? */
+app.post('/api/calendars/:calendarId/resolve-event', auth, requireMember, async (req, res) => {
+  try {
+    const event = await resolveEventLink(String(req.body?.url || ''))
+    if (!event) return res.status(404).json({ error: 'no event details behind that link' })
+    res.json(event)
+  } catch (e) {
+    res.status(502).json({ error: e.message })
+  }
 })
 
 const receiptJobs = new Map()

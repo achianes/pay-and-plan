@@ -320,6 +320,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val sharedEvent: StateFlow<CalendarEvent?> = _sharedEvent.asStateFlow()
 
     fun offerEvent(event: CalendarEvent) { _sharedEvent.value = event }
+
+    /** Asks the server what event hides behind a shared Google Calendar link. */
+    suspend fun resolveEventLink(url: String): CalendarEvent? =
+        runCatching { repo.api.resolveEventLink(repo.calendarIdNow(), url) }.getOrNull()
+
+    /** Address -> places on the map, through the server. */
+    fun searchPlaces(query: String, onResult: (List<com.payandplan.app.net.Place>) -> Unit) =
+        viewModelScope.launch { onResult(runCatching { repo.api.searchPlaces(query) }.getOrDefault(emptyList())) }
     fun consumeEvent() { _sharedEvent.value = null }
 
     fun attachSharedFiles(noteId: String, uris: List<Uri>) = viewModelScope.launch {

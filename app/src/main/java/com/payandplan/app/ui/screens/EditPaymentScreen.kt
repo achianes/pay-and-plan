@@ -84,6 +84,10 @@ fun EditPaymentScreen(
     var amount by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
+    var latitude by remember { mutableStateOf<Double?>(null) }
+    var longitude by remember { mutableStateOf<Double?>(null) }
+    var places by remember { mutableStateOf<List<com.payandplan.app.net.Place>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
     var notes by remember { mutableStateOf("") }
     var colorIndex by remember { mutableStateOf(0) }
     var date by remember { mutableStateOf(presetDay ?: LocalDate.now()) }
@@ -153,6 +157,8 @@ fun EditPaymentScreen(
             amount = if (e.amountCents > 0) Format.centsToInput(e.amountCents) else ""
             category = e.category
             location = e.location
+            latitude = e.latitude
+            longitude = e.longitude
             notes = e.notes
             colorIndex = e.colorIndex
             date = LocalDate.ofEpochDay(e.dueDate)
@@ -193,7 +199,9 @@ fun EditPaymentScreen(
             ownerUserId = ownerId,
             visibility = if (isPrivate) Visibility.PRIVATE else Visibility.SHARED,
             kind = kind.name,
-            location = if (isAppointment) location.trim() else ""
+            location = if (isAppointment) location.trim() else "",
+            latitude = if (isAppointment) latitude else null,
+            longitude = if (isAppointment) longitude else null
         )
     }
 
@@ -257,7 +265,48 @@ fun EditPaymentScreen(
                 }
                 Box(Modifier.height(10.dp))
                 if (isAppointment) {
-                    ComicField(location, { location = it }, "Where (address, clinic, studio)", Modifier.fillMaxWidth())
+                    ComicField(
+                        location,
+                        { location = it; latitude = null; longitude = null },
+                        "Where (address, clinic, studio)",
+                        Modifier.fillMaxWidth()
+                    )
+                    Box(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ComicButton(
+                            if (searching) "SEARCHING…" else "🗺 FIND ON THE MAP",
+                            {
+                                if (location.isNotBlank() && !searching) {
+                                    searching = true
+                                    vm.searchPlaces(location) { places = it; searching = false }
+                                }
+                            },
+                            color = Sky,
+                            compact = true
+                        )
+                        if (latitude != null) {
+                            Box(Modifier.size(8.dp))
+                            Text("📍 pinned", style = MaterialTheme.typography.bodySmall, color = Ink)
+                        }
+                    }
+                    if (places.isNotEmpty()) {
+                        Box(Modifier.height(6.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            places.forEach { place ->
+                                ComicChip(
+                                    text = place.name,
+                                    selected = false,
+                                    onClick = {
+                                        location = place.name
+                                        latitude = place.lat
+                                        longitude = place.lon
+                                        places = emptyList()
+                                    },
+                                    color = Paper
+                                )
+                            }
+                        }
+                    }
                 } else {
                     ComicField(category, { category = it }, "Category (optional)", Modifier.fillMaxWidth())
                     if (usedCategories.isNotEmpty()) {

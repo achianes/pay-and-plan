@@ -34,7 +34,7 @@ function isPrivateAddress(ip) {
   return false
 }
 
-async function assertPublicUrl(raw) {
+export async function assertPublicUrl(raw) {
   let url
   try {
     url = new URL(raw)

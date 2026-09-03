@@ -128,6 +128,20 @@ fun PaymentDetailScreen(
                 if (appointment && p.location.isNotBlank()) {
                     Text("📍 ${p.location}", style = MaterialTheme.typography.bodyLarge, color = Ink)
                 }
+                if (appointment && p.latitude != null && p.longitude != null) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Box(Modifier.height(6.dp))
+                    ComicButton("🗺 OPEN THE MAP", {
+                        val uri = android.net.Uri.parse(
+                            "geo:${p.latitude},${p.longitude}?q=${p.latitude},${p.longitude}(${android.net.Uri.encode(p.title)})"
+                        )
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                        runCatching { context.startActivity(intent) }.onFailure {
+                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=17/${p.latitude}/${p.longitude}")))
+                        }
+                    }, color = Sky, compact = true)
+                }
                 Text(
                     buildString {
                         if (p.isInstallment) append("${p.installmentLabel}  •  ")

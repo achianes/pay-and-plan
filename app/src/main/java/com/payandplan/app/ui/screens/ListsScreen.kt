@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -332,6 +336,7 @@ fun ListDetailScreen(
     val currency = vm.currency()
     var newItem by remember { mutableStateOf("") }
     var actual by remember { mutableStateOf("") }
+    var mosaic by remember { mutableStateOf(vm.prefs.listMosaic) }
 
     val l = list
     if (l == null) {
@@ -372,7 +377,25 @@ fun ListDetailScreen(
                 if (items.isEmpty()) {
                     Text("Empty list. Add what is needed.", style = MaterialTheme.typography.bodyMedium, color = Ink)
                 }
-                items.forEach { item -> ItemRow(vm, item, currency, photos[item.id]) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ComicChip("☰ List", !mosaic, { mosaic = false; vm.prefs.listMosaic = false }, color = Yellow)
+                    ComicChip("▦ Mosaic", mosaic, { mosaic = true; vm.prefs.listMosaic = true }, color = Yellow)
+                }
+                Box(Modifier.height(10.dp))
+                if (mosaic) {
+                    // every product as a tile: one tap ticks it, another tap unticks it
+                    items.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            row.forEach { item ->
+                                MosaicTile(vm, item, photos[item.id], Modifier.weight(1f))
+                            }
+                            repeat(3 - row.size) { Box(Modifier.weight(1f)) }
+                        }
+                        Box(Modifier.height(10.dp))
+                    }
+                } else {
+                    items.forEach { item -> ItemRow(vm, item, currency, photos[item.id]) }
+                }
                 Box(Modifier.height(10.dp))
                 val context = LocalContext.current
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -465,6 +488,63 @@ fun ListDetailScreen(
 
         item {
             ComicButton("DELETE LIST", { vm.deleteList(l) { onBack() } }, color = Coral, compact = true)
+        }
+    }
+}
+
+@Composable
+private fun MosaicTile(
+    vm: MainViewModel,
+    item: ShoppingItem,
+    photo: com.payandplan.app.data.Attachment?,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier
+            .aspectRatio(1f)
+            .clip(shape)
+            .background(Paper, shape)
+            .border(3.dp, Ink, shape)
+            .clickable { vm.updateItem(item.copy(checked = !item.checked)) }
+            .alpha(if (item.checked) 0.6f else 1f)
+    ) {
+        if (photo != null) {
+            AsyncImage(
+                model = vm.attachmentSource(photo),
+                contentDescription = item.text,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("🛒", style = MaterialTheme.typography.displaySmall)
+            }
+        }
+        Text(
+            item.text,
+            style = MaterialTheme.typography.labelSmall,
+            color = Ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Paper.copy(alpha = 0.92f))
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+        )
+        if (item.checked) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(30.dp)
+                    .background(Mint, CircleShape)
+                    .border(2.dp, Ink, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("✓", style = MaterialTheme.typography.titleMedium.copy(fontFamily = PosterFont), color = Ink)
+            }
         }
     }
 }

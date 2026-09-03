@@ -129,6 +129,9 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachments WHERE pendingUpload = 1 AND deletedAt IS NULL")
     suspend fun pendingUploads(): List<Attachment>
 
+    @Query("SELECT * FROM attachments WHERE itemId = :itemId AND deletedAt IS NULL")
+    suspend fun forItem(itemId: String): List<Attachment>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(attachment: Attachment)
 
@@ -243,6 +246,10 @@ interface ShoppingDao {
 
     @Query("UPDATE shopping_items SET pendingSync = 0 WHERE id IN (:ids)")
     suspend fun clearPendingItems(ids: List<String>)
+
+    /** Every live item in the calendar except the one asked about; the photo cache reads it. */
+    @Query("SELECT * FROM shopping_items WHERE calendarId = :calendarId AND id != :exceptId AND deletedAt IS NULL")
+    suspend fun itemsNamed(calendarId: String, exceptId: String): List<ShoppingItem>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertList(list: ShoppingList)
