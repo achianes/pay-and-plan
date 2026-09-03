@@ -83,6 +83,7 @@ fun ListsScreen(
     val lists by vm.shoppingLists.collectAsState()
     val currency = vm.currency()
     val me = vm.myUserId()
+    val receipts by vm.receiptsEnabled.collectAsState()
 
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 170.dp),
@@ -98,7 +99,7 @@ fun ListsScreen(
             )
         }
 
-        item { ReceiptScanner(vm, onOpenList) }
+        if (receipts) item { ReceiptScanner(vm, onOpenList) }
 
         val mine = lists.filter { it.assignedToUserId == me && !it.isDone }
         val others = lists.filter { it.assignedToUserId != me && !it.isDone }

@@ -157,7 +157,9 @@ app.get('/api/me', auth, (req, res) => {
     .all(req.user.id)
   res.json({
     user: publicUser(req.user),
-    calendars: calendars.map((c) => calendarPayload(c.id))
+    calendars: calendars.map((c) => calendarPayload(c.id)),
+    // what this particular server can do, so clients hide what is not there
+    features: { receipts: !!config.ollamaUrl }
   })
 })
 
@@ -482,6 +484,10 @@ app.post('/api/calendars/:calendarId/attachments', auth, requireMember, upload.s
 app.post('/api/calendars/:calendarId/receipt', auth, requireMember, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'file missing' })
   const stored = path.join(FILES_DIR, req.file.filename)
+  if (!config.ollamaUrl) {
+    fs.rmSync(stored, { force: true })
+    return res.status(501).json({ error: 'receipt reading is not set up on this server' })
+  }
   if (!String(req.file.mimetype || '').startsWith('image/')) {
     fs.rmSync(stored, { force: true })
     return res.status(400).json({ error: 'send a picture of the receipt' })

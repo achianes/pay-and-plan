@@ -56,7 +56,8 @@ Everything is offline first: you keep using it on the train, and it catches up w
 - **Already shopped? Photograph the receipt.** A vision model on your own [Ollama](https://ollama.com) server
   reads it and hands back a list that is already ticked and priced, with the shop as the title and the total
   as the budget; the picture stays on that day as the receipt. A full screen progress card with a STOP
-  button covers the wait, and STOP really stops the model, not just the phone.
+  button covers the wait, and STOP really stops the model, not just the phone. Optional — see
+  [Reading receipts with Ollama](#reading-receipts-with-ollama).
 
 ### Notes
 - A section without dates: recipes, prompts, thoughts, articles, links, photos — categories included, and
@@ -110,12 +111,56 @@ Configure it with environment variables, or with a JSON file pointed at by `PAYP
 | `PORT` | port to listen on |
 | `JWT_SECRET` | signing secret — **set your own**, a random 32+ chars |
 | `DATA_DIR` | where the SQLite file and the uploads live |
-| `OLLAMA_URL` | your Ollama server, for reading receipts (e.g. `http://192.168.1.20:11434`) |
-| `OLLAMA_MODEL` | a model with vision, e.g. `qwen3-vl:8b` |
+| `OLLAMA_URL` | optional — an Ollama server for reading receipts; empty means the feature is off |
+| `OLLAMA_MODEL` | the vision model to use on it (default `qwen3-vl:8b`) |
 
 On Windows, `server/scripts/install-windows-services.ps1` (run elevated) does the whole thing: generates a
 secret, writes the config, registers the server as a scheduled task that starts at boot, and wires a
 Cloudflare tunnel so the household can reach it from outside.
+
+### Reading receipts with Ollama
+
+**Off by default.** Without an Ollama server configured, the receipt scanner does not appear in either
+client and the endpoint answers `501`. Nothing else changes.
+
+To turn it on you need [Ollama](https://ollama.com) running somewhere the server can reach — the same
+machine, or another box in the house — with a model that can **see**. Pull one:
+
+```bash
+ollama pull qwen3-vl:8b
+```
+
+`qwen3-vl:8b` is a good default: fast enough on a mid range GPU, reads Italian receipts well. Any Ollama
+model whose `ollama show` lists `vision` among its capabilities will do (`llava`, `gemma3`, `minicpm-v`,
+bigger `qwen3-vl` variants…). If Ollama runs on another machine, make sure it listens on the network
+(`OLLAMA_HOST=0.0.0.0` on that machine).
+
+Then tell the server where it is. Environment variables:
+
+```bash
+OLLAMA_URL=http://192.168.1.20:11434
+OLLAMA_MODEL=qwen3-vl:8b
+```
+
+or the same two keys in the JSON config file:
+
+```json
+{
+  "port": 8080,
+  "dataDir": "/var/lib/payandplan",
+  "jwtSecret": "…",
+  "ollamaUrl": "http://192.168.1.20:11434",
+  "ollamaModel": "qwen3-vl:8b"
+}
+```
+
+Restart the server. Clients pick the change up the next time they start: the **Already shopped?** card
+shows up in Shopping, on both the phone app and the web app.
+
+How it works: the picture goes to your server, which sends it to Ollama with a prompt asking for the shop,
+the date, every purchased line with its price, and the total as JSON. The answer becomes a list that is
+already ticked and priced; the photo is kept as that day's receipt. A read takes 10–20 seconds on a
+27B model, less on a small one. The picture never leaves your network.
 
 ### The web app
 

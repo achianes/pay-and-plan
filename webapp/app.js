@@ -8,6 +8,7 @@ const LS = {
   user: 'pp.user',
   calendars: 'pp.calendars',
   calendarId: 'pp.calendarId',
+  features: 'pp.features',
   data: (id) => `pp.data.${id}`,
   since: (id) => `pp.since.${id}`,
   dirty: (id) => `pp.dirty.${id}`
@@ -35,6 +36,7 @@ const state = {
   user: safeParse(localStorage.getItem(LS.user)) || null,
   calendars: safeParse(localStorage.getItem(LS.calendars)) || [],
   calendarId: localStorage.getItem(LS.calendarId) || '',
+  features: safeParse(localStorage.getItem(LS.features)) || {},
   data: { payments: [], dayNotes: [], attachments: [], shoppingLists: [], shoppingItems: [], notes: [] },
   dirty: new Set(),
   view: 'calendar',
@@ -588,6 +590,8 @@ async function refreshMe() {
   const me = await api('/api/me')
   state.user = me.user
   state.calendars = me.calendars
+  state.features = me.features || {}
+  localStorage.setItem(LS.features, JSON.stringify(state.features))
   localStorage.setItem(LS.user, JSON.stringify(me.user))
   localStorage.setItem(LS.calendars, JSON.stringify(me.calendars))
   if (!state.calendarId || !state.calendars.some((c) => c.id === state.calendarId)) {
@@ -1149,13 +1153,13 @@ function viewLists() {
   const rows = lists().sort((a, b) => (a.status === b.status ? (b.updatedAt || 0) - (a.updatedAt || 0) : a.status === 'OPEN' ? -1 : 1))
   return `${header('SHOPPING')}
     <p class="muted"><small>Make a list, hand it to someone else. When they are done they type in what it cost and it lands in the calendar.</small></p>
-    <div class="card sky tight">
+    ${state.features?.receipts ? `<div class="card sky tight">
       <div class="row between">
         <div class="grow"><b>Already shopped?</b><br><small>Snap the receipt: the items and the prices come out as a list.</small></div>
         <button class="yellow small" data-act="scan-receipt">📷 RECEIPT</button>
       </div>
       <input type="file" id="receipt-file" data-scan="1" accept="image/*" capture="environment" style="display:none" />
-    </div>
+    </div>` : ''}
     ${rows.length ? rows.map(listRow).join('') : `<div class="card yellow bubble tap" data-act="new-list">
          <div class="emo">🛒</div>No lists yet. Tap here to make one.</div>`}`
 }
@@ -2333,6 +2337,17 @@ function completeList(id) {
 window.addEventListener('online', () => { state.online = true; paintSyncDot(); sync().catch(() => {}) })
 window.addEventListener('offline', () => { state.online = false; paintSyncDot() })
 setInterval(() => { if (state.token && state.online) sync().catch(() => {}) }, 30000)
+// the server may have gained or lost a feature since last time; ask quietly at start
+if (state.token) {
+  api('/api/me').then((me) => {
+    const next = me.features || {}
+    if (JSON.stringify(next) !== JSON.stringify(state.features)) {
+      state.features = next
+      localStorage.setItem(LS.features, JSON.stringify(next))
+      render()
+    }
+  }).catch(() => {})
+}
 document.addEventListener('visibilitychange', () => { if (!document.hidden) sync().catch(() => {}) })
 
 /** Picks up whatever another app shared into us and opens a note with it. */

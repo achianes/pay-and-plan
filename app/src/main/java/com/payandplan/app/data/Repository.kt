@@ -617,9 +617,10 @@ class Repository(
     }
 
     suspend fun refreshAccount() {
-        val (me, calendars) = api.me()
+        val (me, calendars, receipts) = api.me()
         prefs.userName = me.name
         prefs.userEmail = me.email
+        prefs.receiptsEnabled = receipts
         cacheCalendars(calendars)
         if (prefs.calendarId.isBlank() || calendars.none { it.id == prefs.calendarId }) {
             switchCalendar(calendars.firstOrNull()?.id ?: "")

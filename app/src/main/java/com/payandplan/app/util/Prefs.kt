@@ -41,6 +41,11 @@ class Prefs(context: Context) {
       * the sync cursors have to go with it, otherwise the app asks the server for "changes
       * since yesterday" against an empty database and looks empty.
       */
+    /** The server said it can read receipts; without it the scanner card stays hidden. */
+    var receiptsEnabled: Boolean
+        get() = sp.getBoolean("receipts_enabled", false)
+        set(v) = sp.edit().putBoolean("receipts_enabled", v).apply()
+
     var schemaVersion: Int
         get() = sp.getInt("schema_version", 0)
         set(v) = sp.edit().putInt("schema_version", v).apply()

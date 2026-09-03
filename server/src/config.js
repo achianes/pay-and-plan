@@ -24,7 +24,8 @@ export const config = {
   dataDir: process.env.DATA_DIR || fileConfig.dataDir || path.join(process.cwd(), 'data'),
   jwtSecret: process.env.JWT_SECRET || fileConfig.jwtSecret || 'change-me-please',
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || fileConfig.maxUploadMb || 25),
-  // the household's own Ollama, which reads till receipts into shopping lists
-  ollamaUrl: process.env.OLLAMA_URL || fileConfig.ollamaUrl || 'http://172.24.172.155:11434',
-  ollamaModel: process.env.OLLAMA_MODEL || fileConfig.ollamaModel || 'orcarouter/Qwen3.8-27B-Uncensored:latest'
+  // an Ollama server with a vision model turns till receipts into shopping lists;
+  // leave the URL empty and the feature is simply off, clients do not even show it
+  ollamaUrl: (process.env.OLLAMA_URL || fileConfig.ollamaUrl || '').trim(),
+  ollamaModel: process.env.OLLAMA_MODEL || fileConfig.ollamaModel || 'qwen3-vl:8b'
 }

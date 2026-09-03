@@ -129,8 +129,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             repo.topUpAll()
             repo.armWindow()
             if (repo.api.isLoggedIn) runCatching { repo.refreshAccount() }
+            _receiptsEnabled.value = prefs.receiptsEnabled
         }
     }
+
+    /** Whether the server can read receipts; observable so the card appears as soon as we know. */
+    private val _receiptsEnabled = MutableStateFlow(prefs.receiptsEnabled)
+    val receiptsEnabled: StateFlow<Boolean> = _receiptsEnabled.asStateFlow()
 
     // ---- account ----
 
@@ -155,7 +160,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setServerUrl(url: String) { prefs.serverUrl = url }
     fun serverUrl(): String = prefs.serverUrl
 
-    fun refreshAccount() = viewModelScope.launch { runCatching { repo.refreshAccount() } }
+    fun refreshAccount() = viewModelScope.launch {
+        runCatching { repo.refreshAccount() }
+        _receiptsEnabled.value = prefs.receiptsEnabled
+    }
     fun syncNow() = viewModelScope.launch { repo.sync() }
     fun fullResync() = viewModelScope.launch { repo.fullResync() }
     fun switchCalendar(id: String) = repo.switchCalendar(id)

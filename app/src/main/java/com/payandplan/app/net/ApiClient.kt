@@ -124,12 +124,14 @@ class ApiClient(private val prefs: Prefs) {
         )
     }
 
-    suspend fun me(): Pair<Member, List<CalendarSpace>> {
+    suspend fun me(): Triple<Member, List<CalendarSpace>, Boolean> {
         val json = JSONObject(request("GET", "/api/me"))
         val u = json.getJSONObject("user")
         val me = Member(u.getString("id"), u.optString("name"), u.optString("email"), u.optInt("colorIndex"), "self")
         val calendars = json.getJSONArray("calendars").mapObjects { calendarOf(it) }
-        return me to calendars
+        // third value: whether this server can read receipts (it has an Ollama behind it)
+        val receipts = json.optJSONObject("features")?.optBoolean("receipts") ?: false
+        return Triple(me, calendars, receipts)
     }
 
     suspend fun updateMe(name: String) {
