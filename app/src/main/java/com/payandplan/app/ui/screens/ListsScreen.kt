@@ -29,6 +29,10 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import android.widget.Toast
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.Color
@@ -123,6 +127,33 @@ fun ListsScreen(
             }
         }
     }
+}
+
+/**
+ * Opens Google's barcode scanner and turns what it reads into an item, named and pictured
+ * from the Italian food database when the code is known there.
+ */
+private fun scanBarcode(context: android.content.Context, listId: String, vm: MainViewModel) {
+    val options = GmsBarcodeScannerOptions.Builder()
+        .setBarcodeFormats(
+            Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E
+        )
+        .build()
+    GmsBarcodeScanning.getClient(context, options).startScan()
+        .addOnSuccessListener { barcode ->
+            val code = barcode.rawValue?.filter { it.isDigit() } ?: return@addOnSuccessListener
+            Toast.makeText(context, "Looking up $code…", Toast.LENGTH_SHORT).show()
+            vm.addByBarcode(listId, code) { label ->
+                Toast.makeText(
+                    context,
+                    label?.let { "Added $it" } ?: "Not in the database, added by number",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+        .addOnFailureListener { e ->
+            Toast.makeText(context, e.message ?: "Scanner not available", Toast.LENGTH_LONG).show()
+        }
 }
 
 /**
@@ -343,7 +374,10 @@ fun ListDetailScreen(
                 }
                 items.forEach { item -> ItemRow(vm, item, currency, photos[item.id]) }
                 Box(Modifier.height(10.dp))
+                val context = LocalContext.current
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    ComicButton("▦", { scanBarcode(context, l.id, vm) }, color = Sky, compact = true)
+                    Box(Modifier.size(8.dp))
                     ComicField(newItem, { newItem = it }, "Add something", Modifier.weight(1f))
                     Box(Modifier.size(8.dp))
                     ComicButton("ADD", {

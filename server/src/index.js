@@ -10,6 +10,7 @@ import { db, FILES_DIR, now, uuid, inviteCode, isMember } from './db.js'
 import { config } from './config.js'
 import { unfurl, fetchImage } from './unfurl.js'
 import { readReceipt } from './receipt.js'
+import { lookupProduct, productImage } from './products.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = config.port
@@ -532,6 +533,42 @@ app.post('/api/calendars/:calendarId/receipt', auth, requireMember, upload.singl
   } finally {
     receiptJobs.delete(jobId)
   }
+})
+
+/**
+ * A scanned barcode becomes a named item with a small picture: Open Food Facts knows most
+ * of what Italian supermarkets sell. When an itemId comes along, the picture is stored as
+ * that item's photo, exactly as if someone had photographed it.
+ */
+app.post('/api/calendars/:calendarId/products/lookup', auth, requireMember, async (req, res) => {
+  const { barcode, itemId } = req.body || {}
+  let product
+  try {
+    product = await lookupProduct(barcode)
+  } catch (e) {
+    return res.status(502).json({ error: e.message })
+  }
+  if (!product) return res.status(404).json({ error: 'not in the product database' })
+
+  let attachment = null
+  if (itemId) {
+    const image = await productImage(product).catch(() => null)
+    if (image) {
+      const stamp = now()
+      const id = uuid()
+      const storageName = `${id}.jpg`
+      fs.writeFileSync(path.join(FILES_DIR, storageName), image.buffer)
+      db.prepare(
+        `INSERT INTO attachments
+          (id, calendar_id, owner_type, payment_id, epoch_day, item_id, note_id, file_name, mime,
+           size, storage_name, is_receipt, uploaded_by, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).run(id, req.calendarId, 'ITEM', null, null, String(itemId), null, image.name, image.mime,
+        image.buffer.length, storageName, 0, req.user.id, stamp, stamp)
+      attachment = rowOut(db.prepare('SELECT * FROM attachments WHERE id = ?').get(id))
+    }
+  }
+  res.json({ product, attachment })
 })
 
 const receiptJobs = new Map()

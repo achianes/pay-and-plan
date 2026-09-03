@@ -1275,7 +1275,10 @@ function openModal(html) {
   wire(holder)
   return holder
 }
-const closeModals = () => document.querySelectorAll('.modal').forEach((m) => m.remove())
+const closeModals = () => {
+  stopScanner()   // a camera left running behind a closed sheet is a bug
+  document.querySelectorAll('.modal').forEach((m) => m.remove())
+}
 
 function billEditor(existing, presetDay, preset = null) {
   const p = existing || newPayment({ dueDate: epochDay(presetDay || state.selected), ...(preset || {}) })
@@ -1563,6 +1566,7 @@ function listDetail(id) {
         }).join('') || '<li><small class="muted">Empty list. Add what is needed.</small></li>'}
       </ul>
       <div class="row" style="margin-top:10px">
+        <button class="sky small" data-act="scan-item" data-list="${l.id}" title="Scan a barcode">▦</button>
         <input id="new-item" class="grow" placeholder="Add something" style="margin:0"
                list="item-vocabulary" autocomplete="off" autocapitalize="sentences" />
         <datalist id="item-vocabulary">
@@ -2012,6 +2016,12 @@ async function handle(act, el) {
       touch('shoppingItems', item)
       closeModals(); return listDetail(listId)
     }
+    case 'scan-item': return barcodeSheet(el.dataset.list)
+    case 'lookup-barcode': {
+      const code = (document.getElementById('scan-code')?.value || '').replace(/\D/g, '')
+      if (code.length < 8) return toast('Type the whole number under the bars')
+      return addByBarcode(el.dataset.list, code)
+    }
     case 'add-item': {
       const input = document.getElementById('new-item')
       const text = input.value.trim()
@@ -2293,6 +2303,91 @@ async function importReceipt(file) {
   render()
   listDetail(l.id)
   toast(`${r.items.length} items, ${money(r.totalCents)}`)
+}
+
+// ---------------------------------------------------------------- barcode
+
+function stopScanner() {
+  const s = window.__scanner
+  window.__scanner = null
+  // stop() throws synchronously when the camera never started; closing must go on regardless
+  try { if (s && s.isScanning) s.stop().catch(() => {}) } catch { /* nothing was running */ }
+}
+
+/** Camera view plus a field for the number, for when the camera cannot read the bars. */
+function barcodeSheet(listId) {
+  openModal(`
+    <h2>▦ SCAN A PRODUCT</h2>
+    <small class="muted">Point the camera at the barcode. The item gets its name and a small picture
+      from the Italian food database.</small>
+    <div id="scan-view" style="margin-top:10px"></div>
+    <label>Or type the number</label>
+    <div class="row">
+      <input id="scan-code" class="grow" inputmode="numeric" placeholder="8000500037560" style="margin:0" />
+      <button class="mint small" data-act="lookup-barcode" data-list="${listId}">LOOK UP</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="grow" data-act="close">CLOSE</button>
+    </div>`)
+
+  if (typeof Html5Qrcode === 'undefined') return
+  const formats = [
+    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E
+  ]
+  const scanner = new Html5Qrcode('scan-view', { formatsToSupport: formats, verbose: false })
+  window.__scanner = scanner
+  scanner.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 260, height: 140 } },
+    (code) => {
+      if (window.__scanner !== scanner) return   // already handled
+      stopScanner()
+      if (navigator.vibrate) navigator.vibrate(60)
+      addByBarcode(listId, code)
+    },
+    () => {}   // frames without a barcode are the normal case
+  ).catch(() => {
+    const view = document.getElementById('scan-view')
+    if (view) view.innerHTML = '<p style="padding:14px;color:#fff6e5">No camera here. Type the number instead.</p>'
+  })
+}
+
+/**
+ * Looks the code up, adds the product as an item with its name and its picture. A code the
+ * database does not know still becomes an item, so the scan is never wasted.
+ */
+async function addByBarcode(listId, code) {
+  const busy = showBusy('▦', 'LOOKING IT UP', code)
+  const item = {
+    id: uuid(), listId, text: `Product ${code}`, quantity: '', checked: false,
+    priceCents: null, sortIndex: itemsOf(listId).length,
+    createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null
+  }
+  let found = null
+  try {
+    found = await api(`/api/calendars/${state.calendarId}/products/lookup`, {
+      method: 'POST', body: JSON.stringify({ barcode: code, itemId: item.id }), signal: busy.signal
+    })
+  } catch (e) {
+    busy.close()
+    if (busy.signal.aborted) return
+    if (!/not in the product database/.test(e.message)) return toast(e.message)
+  }
+  busy.close()
+  if (found?.product) {
+    item.text = found.product.label
+    if (found.product.quantity) item.quantity = ''
+  }
+  state.data.shoppingItems.push(item)
+  touch('shoppingItems', item)
+  if (found?.attachment && !state.data.attachments.some((x) => x.id === found.attachment.id)) {
+    state.data.attachments.push(found.attachment)
+  }
+  persist()
+  closeModals()
+  listDetail(listId)
+  toast(found?.product ? `Added ${found.product.label}` : 'Not in the database, added by number')
 }
 
 /** The shopper types what it really cost: the list closes and a paid bill appears. */

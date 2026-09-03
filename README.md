@@ -53,6 +53,10 @@ Everything is offline first: you keep using it on the train, and it catches up w
 - **Shopping lists** you hand to somebody else, with a day and a time. They tick items off as they go and
   type the total at the till; it becomes a paid bill in their name.
 - Item names **autocomplete from what the household has bought before**, and any item can carry a photo.
+- **Scan the barcode** instead of typing: the item is looked up in
+  [Open Food Facts](https://it.openfoodfacts.org) (Italian edition) and lands on the list with its name, brand,
+  pack size and a small picture next to it. Works on Android (Google's scanner) and in the web app on iPhone
+  (camera in the page); a number can also be typed by hand.
 - **Already shopped? Photograph the receipt.** A vision model on your own [Ollama](https://ollama.com) server
   reads it and hands back a list that is already ticked and priced, with the shop as the title and the total
   as the budget; the picture stays on that day as the receipt. A full screen progress card with a STOP

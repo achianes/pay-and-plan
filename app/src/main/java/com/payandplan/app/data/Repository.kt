@@ -482,6 +482,32 @@ class Repository(
         syncQuietly()
     }
 
+    /**
+     * A scanned barcode becomes an item: named and pictured when the food database knows it,
+     * "Product <code>" when it does not, so the scan is never wasted. Returns the label.
+     */
+    suspend fun addByBarcode(listId: String, code: String): String? {
+        val stamp = System.currentTimeMillis()
+        val item = ShoppingItem(
+            listId = listId,
+            calendarId = _calendarId.value,
+            text = "Product $code",
+            sortIndex = shopping.getItems(listId).size,
+            createdAt = stamp,
+            updatedAt = stamp,
+            pendingSync = true
+        )
+        shopping.upsertItem(item)
+        val found = runCatching { api.lookupProduct(_calendarId.value, code, item.id) }.getOrNull()
+        if (found != null) {
+            val (label, attachment) = found
+            shopping.upsertItem(item.copy(text = label, updatedAt = System.currentTimeMillis(), pendingSync = true))
+            attachment?.let { attachments.insert(it) }
+        }
+        syncQuietly()
+        return found?.first
+    }
+
     suspend fun updateItem(item: ShoppingItem) {
         shopping.upsertItem(item.copy(updatedAt = System.currentTimeMillis(), pendingSync = true))
         syncQuietly()

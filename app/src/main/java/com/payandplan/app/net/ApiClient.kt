@@ -279,6 +279,25 @@ class ApiClient(private val prefs: Prefs) {
     }
 
     /** Sends a receipt photo to the server, which has the model read it. Slow: give it minutes. */
+    /**
+     * A barcode against the food database. Returns the readable label and, when [itemId] was
+     * given, the picture the server stored as that item's photo. Null when it is unknown.
+     */
+    suspend fun lookupProduct(calendarId: String, barcode: String, itemId: String?): Pair<String, Attachment?>? {
+        val body = JSONObject().put("barcode", barcode)
+        if (itemId != null) body.put("itemId", itemId)
+        val text = try {
+            request("POST", "/api/calendars/$calendarId/products/lookup", body)
+        } catch (e: ApiException) {
+            if (e.code == 404) return null
+            throw e
+        }
+        val j = JSONObject(text)
+        val label = j.getJSONObject("product").optString("label")
+        val attachment = j.optJSONObject("attachment")?.let { attachmentOf(it, calendarId) }
+        return label to attachment
+    }
+
     /** STOP pressed: tells the server to drop the model call for that job. */
     suspend fun stopReceipt(jobId: String) {
         request("POST", "/api/receipt-jobs/$jobId/stop", JSONObject())

@@ -230,6 +230,15 @@ label { font-weight: 700; font-size: 14px; display: block; margin-top: 6px; }
 .day .mark.l { left: 3px; }
 .day .mark.r { right: 3px; }
 
+/* ---------------------------------------------------------------- barcode scanner */
+
+#scan-view {
+  width: 100%; min-height: 220px;
+  border: 3px solid var(--ink); border-radius: 16px; overflow: hidden;
+  background: #111;
+}
+#scan-view video { width: 100% !important; display: block; }
+
 /* ---------------------------------------------------------------- busy splash */
 
 .splash {
