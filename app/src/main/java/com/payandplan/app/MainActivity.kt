@@ -54,6 +54,7 @@ import androidx.navigation.navArgument
 import androidx.core.content.IntentCompat
 import com.payandplan.app.ui.MainViewModel
 import com.payandplan.app.util.CalendarEvent
+import com.payandplan.app.util.GoogleCalendarShare
 import com.payandplan.app.util.IcsParser
 import com.payandplan.app.ui.components.ComicIconButton
 import com.payandplan.app.ui.screens.CalendarScreen
@@ -156,6 +157,10 @@ class MainActivity : ComponentActivity() {
     private fun readCalendarEvent(mime: String?, text: String, uris: List<Uri>): CalendarEvent? {
         if (IcsParser.looksLikeCalendar(text, mime)) {
             IcsParser.parse(text)?.let { return it }
+        }
+        // Google Calendar shares a few lines of text and a link rather than an .ics
+        if (GoogleCalendarShare.looksLikeGoogleCalendar(text)) {
+            GoogleCalendarShare.parse(text)?.let { return it }
         }
         val looksLikeFile = mime != null &&
             (mime.startsWith("text/calendar") || mime.contains("ics") || mime.contains("vcalendar"))

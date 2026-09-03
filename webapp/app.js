@@ -1277,8 +1277,8 @@ function openModal(html) {
 }
 const closeModals = () => document.querySelectorAll('.modal').forEach((m) => m.remove())
 
-function billEditor(existing, presetDay) {
-  const p = existing || newPayment({ dueDate: epochDay(presetDay || state.selected) })
+function billEditor(existing, presetDay, preset = null) {
+  const p = existing || newPayment({ dueDate: epochDay(presetDay || state.selected), ...(preset || {}) })
   const isNew = !existing
   const memberOptions = members()
     .map((m) => `<option value="${m.id}" ${p.ownerUserId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')
@@ -2350,6 +2350,89 @@ if (state.token) {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden) sync().catch(() => {}) })
 
+/**
+ * Google Calendar shares a few lines of text and a link rather than an .ics:
+ *
+ *     Dentist
+ *     giovedì 4 settembre 2026 ⋅ 16:30 – 17:15
+ *     Via Verdi 12, Napoli
+ *     https://calendar.app.google/AbCdEf
+ *
+ * or the e-mail style "Title: … / When: … / Where: …". Read either into the fields of a
+ * reminder; null when the text is not a calendar share after all.
+ */
+const GCAL_MONTHS = {
+  gen: 1, feb: 2, mar: 3, apr: 4, mag: 5, giu: 6, lug: 7, ago: 8, set: 9, ott: 10, nov: 11, dic: 12,
+  jan: 1, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, dec: 12
+}
+function looksLikeGoogleCalendar(text) {
+  const t = (text || '').toLowerCase()
+  return t.includes('calendar.google.com') || t.includes('calendar.app.google') || t.includes('google calendar')
+}
+function parseGoogleCalendarShare(text) {
+  const urlRe = /https?:\/\/\S+/g
+  const links = text.match(urlRe) || []
+  const lines = text.replace(/\r/g, '').split('\n')
+    .map((l) => l.replace(urlRe, '').replace(/[⋅·]/g, ' ').trim())
+    .filter(Boolean)
+  if (!lines.length) return null
+
+  const dateOf = (line) => {
+    let m = line.match(/\b(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,})\.?\s+(\d{4})/)
+    if (m && GCAL_MONTHS[m[2].slice(0, 3).toLowerCase()]) {
+      return new Date(Number(m[3]), GCAL_MONTHS[m[2].slice(0, 3).toLowerCase()] - 1, Number(m[1]))
+    }
+    m = line.match(/\b([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})/)
+    if (m && GCAL_MONTHS[m[1].slice(0, 3).toLowerCase()]) {
+      return new Date(Number(m[3]), GCAL_MONTHS[m[1].slice(0, 3).toLowerCase()] - 1, Number(m[2]))
+    }
+    m = line.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/)
+    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]))
+    return null
+  }
+  const timeRe = /\b(\d{1,2})[:.](\d{2})\s*(am|pm)?/i
+  const boilerplate = ['invitation from google calendar', 'invito da google calendar', 'you have been invited',
+    'sei stato invitato', 'view on google calendar', 'visualizza su google calendar', 'google calendar']
+
+  let title = null, whenLine = null, where = null
+  const rest = []
+  for (const line of lines) {
+    const m = line.match(/^(title|titolo|when|quando|where|dove)\s*:\s*(.+)$/i)
+    if (m) {
+      const key = m[1].toLowerCase()
+      if (key === 'title' || key === 'titolo') title = m[2].trim()
+      else if (key === 'when' || key === 'quando') whenLine = m[2].trim()
+      else where = m[2].trim()
+      continue
+    }
+    if (boilerplate.some((b) => line.toLowerCase().includes(b))) continue
+    if (!whenLine && dateOf(line)) { whenLine = line; continue }
+    rest.push(line)
+  }
+  const date = whenLine ? dateOf(whenLine) : null
+  if (title == null) title = rest.shift() || null
+  if (where == null) where = rest.find((l) => !dateOf(l) && !timeRe.test(l)) || ''
+  if (!title && !date) return null
+
+  const t = whenLine ? whenLine.match(timeRe) : null
+  let minutes = 9 * 60
+  if (t) {
+    let h = Number(t[1])
+    const ampm = (t[3] || '').toLowerCase()
+    if (ampm === 'pm' && h < 12) h += 12
+    if (ampm === 'am' && h === 12) h = 0
+    minutes = Math.min(h * 60 + Number(t[2]), 24 * 60 - 1)
+  }
+  return {
+    kind: 'REMINDER',
+    title: title || 'Event',
+    dueDate: epochDay(date || today()),
+    dueTimeMinutes: minutes,
+    location: where || '',
+    notes: ['Shared from Google Calendar', ...links].join('\n')
+  }
+}
+
 /** Picks up whatever another app shared into us and opens a note with it. */
 async function collectShare() {
   if (!/[?&]share=/.test(location.search)) return
@@ -2371,6 +2454,19 @@ async function collectShare() {
     await cache.delete('/__share/meta')
 
     const pieces = [meta.text, meta.url].filter(Boolean)
+
+    // an event from Google Calendar belongs in the calendar as a reminder, not in a note
+    const shared = [meta.title, meta.text, meta.url].filter(Boolean).join('\n')
+    if (!files.length && looksLikeGoogleCalendar(shared)) {
+      const event = parseGoogleCalendarShare(shared)
+      if (event) {
+        state.view = 'calendar'
+        state.selected = fromEpochDay(event.dueDate)
+        render()
+        billEditor(null, null, event)
+        return
+      }
+    }
     window.__pendingShareFiles = files
     state.view = 'notes'
     render()
