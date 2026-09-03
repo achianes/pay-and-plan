@@ -29,6 +29,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.payandplan.app.data.DayStat
 import com.payandplan.app.data.Payment
@@ -285,19 +290,34 @@ private fun DayCell(
         else -> Paper
     }
     val shape = RoundedCornerShape(12.dp)
+    // today wears a second, coloured ring drawn just outside its normal ink border,
+    // so the cell itself stays the same size as its neighbours
+    val todayRing = if (isToday) Modifier.drawBehind {
+        val gap = 2.dp.toPx()
+        val stroke = 3.dp.toPx()
+        val out = gap + stroke / 2
+        drawRoundRect(
+            color = Coral,
+            topLeft = Offset(-out, -out),
+            size = Size(size.width + out * 2, size.height + out * 2),
+            cornerRadius = CornerRadius(12.dp.toPx() + out),
+            style = Stroke(stroke)
+        )
+    } else Modifier
     Box(
         modifier = modifier
-            .aspectRatio(0.82f)
+            .aspectRatio(1f)
+            .then(todayRing)
             .background(bg, shape)
-            .border(if (isToday) 3.5.dp else 2.dp, Ink, shape)
+            .border(2.dp, Ink, shape)
             .combinedClickableCompat(onClick = onClick, onLongClick = onLongClick)
-            .padding(3.dp)
+            .padding(top = 8.dp, start = 3.dp, end = 3.dp, bottom = 3.dp)
     ) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.titleSmall.copy(fontFamily = PosterFont),
-                color = if (inMonth) Ink else Ink.copy(alpha = 0.4f)
+                color = if (inMonth) Ink else Ink.copy(alpha = 0.55f)
             )
             if (stat != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -318,15 +338,6 @@ private fun DayCell(
         }
         if (hasNote) {
             Text("📝", style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd))
-        }
-        if (isToday) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(7.dp)
-                    .background(Coral, CircleShape)
-                    .border(1.dp, Ink, CircleShape)
-            )
         }
     }
 }

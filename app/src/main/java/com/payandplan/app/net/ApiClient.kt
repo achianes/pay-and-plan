@@ -10,7 +10,10 @@ import com.payandplan.app.data.Payment
 import com.payandplan.app.data.ShoppingItem
 import com.payandplan.app.data.ShoppingList
 import com.payandplan.app.util.Prefs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,6 +26,17 @@ import java.net.URLEncoder
 class ApiException(message: String, val code: Int = 0) : Exception(message)
 
 data class AuthResult(val token: String, val userId: String, val name: String, val email: String)
+
+/** What the server read off a photographed till receipt. */
+data class ReceiptItem(val name: String, val quantity: String, val priceCents: Long?)
+data class ReceiptResult(
+    val store: String,
+    val date: String?,
+    val epochDay: Long,
+    val totalCents: Long,
+    val items: List<ReceiptItem>,
+    val attachment: Attachment?
+)
 
 data class SyncPull(
     val serverTime: Long,
@@ -262,6 +276,66 @@ class ApiClient(private val prefs: Prefs) {
         }
     }
 
+    /** Sends a receipt photo to the server, which has the model read it. Slow: give it minutes. */
+    /** STOP pressed: tells the server to drop the model call for that job. */
+    suspend fun stopReceipt(jobId: String) {
+        request("POST", "/api/receipt-jobs/$jobId/stop", JSONObject())
+    }
+
+    suspend fun readReceipt(calendarId: String, file: File, mime: String, today: Long, jobId: String): ReceiptResult =
+        withContext(Dispatchers.IO) {
+            val boundary = "----payplan${System.currentTimeMillis()}"
+            val conn = (URL("${base()}/api/calendars/$calendarId/receipt").openConnection() as HttpURLConnection)
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.connectTimeout = 15000
+            conn.readTimeout = 180000
+            conn.setRequestProperty("Authorization", "Bearer ${prefs.token}")
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            // STOP on the phone cancels the coroutine; closing the socket is what actually ends the wait
+            val onCancel = coroutineContext[Job]?.invokeOnCompletion { cause ->
+                if (cause is CancellationException) runCatching { conn.disconnect() }
+            }
+            try {
+                BufferedOutputStream(conn.outputStream).use { out ->
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"today\"\r\n\r\n$today\r\n".toByteArray())
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write("Content-Disposition: form-data; name=\"jobId\"\r\n\r\n$jobId\r\n".toByteArray())
+                    out.write("--$boundary\r\n".toByteArray())
+                    out.write(
+                        "Content-Disposition: form-data; name=\"file\"; filename=\"${file.name}\"\r\n".toByteArray()
+                    )
+                    out.write("Content-Type: $mime\r\n\r\n".toByteArray())
+                    file.inputStream().use { it.copyTo(out) }
+                    out.write("\r\n--$boundary--\r\n".toByteArray())
+                }
+                val code = conn.responseCode
+                val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                    ?.bufferedReader()?.use { it.readText() } ?: ""
+                if (code !in 200..299) {
+                    val message = runCatching { JSONObject(text).optString("error") }.getOrNull()
+                    throw ApiException(message?.takeIf { it.isNotBlank() } ?: "HTTP $code", code)
+                }
+                val j = JSONObject(text)
+                val items = j.optJSONArray("items") ?: JSONArray()
+                ReceiptResult(
+                    store = j.optString("store").ifBlank { "Receipt" },
+                    date = j.stringOrNull("date"),
+                    epochDay = j.optLong("epochDay"),
+                    totalCents = j.optLong("totalCents"),
+                    items = (0 until items.length()).map { i ->
+                        val it = items.getJSONObject(i)
+                        ReceiptItem(it.optString("name"), it.optString("quantity"), it.longOrNull("priceCents"))
+                    },
+                    attachment = j.optJSONObject("attachment")?.let { attachmentOf(it, calendarId) }
+                )
+            } finally {
+                onCancel?.dispose()
+                conn.disconnect()
+            }
+        }
+
     suspend fun deleteAttachment(id: String) {
         runCatching { request("DELETE", "/api/attachments/$id") }
     }
@@ -369,7 +443,7 @@ class ApiClient(private val prefs: Prefs) {
         .put("id", n.id).put("epochDay", n.epochDay).put("text", n.text)
         .put("updatedAt", n.updatedAt).put("deletedAt", n.deletedAt)
 
-    private fun attachmentOf(j: JSONObject, calendarId: String) = Attachment(
+    fun attachmentOf(j: JSONObject, calendarId: String) = Attachment(
         id = j.getString("id"),
         calendarId = calendarId,
         ownerType = j.optString("ownerType", OwnerType.PAYMENT),

@@ -23,5 +23,8 @@ export const config = {
   port: Number(process.env.PORT || fileConfig.port || 8080),
   dataDir: process.env.DATA_DIR || fileConfig.dataDir || path.join(process.cwd(), 'data'),
   jwtSecret: process.env.JWT_SECRET || fileConfig.jwtSecret || 'change-me-please',
-  maxUploadMb: Number(process.env.MAX_UPLOAD_MB || fileConfig.maxUploadMb || 25)
+  maxUploadMb: Number(process.env.MAX_UPLOAD_MB || fileConfig.maxUploadMb || 25),
+  // the household's own Ollama, which reads till receipts into shopping lists
+  ollamaUrl: process.env.OLLAMA_URL || fileConfig.ollamaUrl || 'http://172.24.172.155:11434',
+  ollamaModel: process.env.OLLAMA_MODEL || fileConfig.ollamaModel || 'orcarouter/Qwen3.8-27B-Uncensored:latest'
 }

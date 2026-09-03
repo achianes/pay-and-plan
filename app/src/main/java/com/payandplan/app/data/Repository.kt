@@ -541,6 +541,53 @@ class Repository(
         syncQuietly()
     }
 
+    /**
+     * A photo of the till receipt becomes a list that is already ticked and priced, assigned
+     * to whoever took the picture. Returns the new list's id.
+     */
+    suspend fun importReceipt(file: File, mime: String, jobId: String): String {
+        val today = Format.today().toEpochDay()
+        val r = api.readReceipt(_calendarId.value, file, mime, today, jobId)
+        val stamp = System.currentTimeMillis()
+        val me = prefs.userId.ifBlank { null }
+        val list = ShoppingList(
+            calendarId = _calendarId.value,
+            title = if (r.date != null) "${r.store} · ${r.date}" else r.store,
+            notes = "Read from the receipt",
+            colorIndex = 2,
+            dueDate = r.epochDay,
+            dueTimeMinutes = 18 * 60,
+            assignedToUserId = me,
+            createdByUserId = me,
+            budgetCents = r.totalCents,
+            createdAt = stamp,
+            updatedAt = stamp,
+            pendingSync = true
+        )
+        shopping.upsertList(list)
+        r.items.forEachIndexed { i, it ->
+            shopping.upsertItem(
+                ShoppingItem(
+                    listId = list.id,
+                    calendarId = _calendarId.value,
+                    text = it.name,
+                    quantity = it.quantity,
+                    checked = true,
+                    priceCents = it.priceCents,
+                    sortIndex = i,
+                    createdAt = stamp,
+                    updatedAt = stamp,
+                    pendingSync = true
+                )
+            )
+        }
+        r.attachment?.let { attachments.insert(it) }
+        syncQuietly()
+        return list.id
+    }
+
+    suspend fun stopReceipt(jobId: String) = runCatching { api.stopReceipt(jobId) }.isSuccess
+
     suspend fun reopenList(list: ShoppingList) {
         shopping.upsertList(
             list.copy(status = "OPEN", actualCents = null, doneAt = null, updatedAt = System.currentTimeMillis(), pendingSync = true)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -22,11 +23,19 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.background
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -88,6 +97,8 @@ fun ListsScreen(
             )
         }
 
+        item { ReceiptScanner(vm, onOpenList) }
+
         val mine = lists.filter { it.assignedToUserId == me && !it.isDone }
         val others = lists.filter { it.assignedToUserId != me && !it.isDone }
         val done = lists.filter { it.isDone }
@@ -108,6 +119,117 @@ fun ListsScreen(
             item {
                 SpeechBubble("No lists yet. Tap + to write one.", Modifier.fillMaxWidth(), Yellow, "🛒")
             }
+        }
+    }
+}
+
+/**
+ * Full screen "working on it" card: a striped bar that keeps moving, a running clock and a
+ * STOP button. The caller decides what STOP cancels.
+ */
+@Composable
+private fun BusySplash(emoji: String, title: String, onStop: () -> Unit) {
+    var seconds by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            seconds += 1
+        }
+    }
+    val stage = if (seconds < 3) "Sending the picture…" else "The model is reading it… usually 10-20 seconds."
+
+    Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xD1281E14))
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            ComicCard(color = Yellow, modifier = Modifier.fillMaxWidth()) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text(emoji, style = MaterialTheme.typography.displayMedium)
+                    Text(title, style = MaterialTheme.typography.headlineSmall, color = Ink)
+                    Box(Modifier.height(14.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(16.dp)
+                            .border(3.dp, Ink, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(10.dp)),
+                        color = Sky,
+                        trackColor = Paper
+                    )
+                    Box(Modifier.height(10.dp))
+                    Text(stage, style = MaterialTheme.typography.bodyMedium, color = Ink)
+                    Text("$seconds s", style = MaterialTheme.typography.bodySmall, color = Ink)
+                    Box(Modifier.height(14.dp))
+                    ComicButton("✋ STOP", onStop, color = Coral)
+                }
+            }
+        }
+    }
+}
+
+/** Photograph the till receipt and get back a list that is already ticked and priced. */
+@Composable
+private fun ReceiptScanner(vm: MainViewModel, onOpenList: (String) -> Unit) {
+    val context = LocalContext.current
+    var reading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var job by remember { mutableStateOf<Job?>(null) }
+    val pendingShot = remember { arrayOfNulls<java.io.File>(1) }
+
+    fun send(file: java.io.File, mime: String) {
+        reading = true
+        error = null
+        job = vm.importReceipt(file, mime) { result ->
+            reading = false
+            result.onSuccess(onOpenList).onFailure { error = it.message ?: "could not read it" }
+        }
+    }
+
+    if (reading) {
+        BusySplash(
+            emoji = "📷",
+            title = "READING THE RECEIPT",
+            onStop = {
+                job?.cancel()
+                reading = false
+            }
+        )
+    }
+
+    val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val file = pendingShot[0]
+        if (ok && file != null && file.exists()) send(file, "image/jpeg")
+    }
+    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val file = FileStore.newCameraFile(context)
+            pendingShot[0] = file
+            takePhoto.launch(FileStore.uriFor(context, file))
+        }
+    }
+    val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) FileStore.copyIn(context, uri)?.let { (file, _, mime) -> send(file, mime) }
+    }
+
+    ComicCard(color = Sky) {
+        Text("📷 ALREADY SHOPPED?", style = MaterialTheme.typography.headlineSmall, color = Ink)
+        Text(
+            "Snap the receipt: the items and the prices come out as a list, ticked and ready to log.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Ink
+        )
+        Box(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ComicButton("TAKE A PHOTO", { askCamera.launch(android.Manifest.permission.CAMERA) }, color = Yellow)
+            ComicButton("PICK ONE", { pickPhoto.launch(arrayOf("image/*")) }, color = Paper)
+        }
+        error?.let {
+            Box(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = Coral)
         }
     }
 }

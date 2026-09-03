@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { db, FILES_DIR, now, uuid, inviteCode, isMember } from './db.js'
 import { config } from './config.js'
 import { unfurl, fetchImage } from './unfurl.js'
+import { readReceipt } from './receipt.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = config.port
@@ -472,6 +473,67 @@ app.post('/api/calendars/:calendarId/attachments', auth, requireMember, upload.s
     req.user.id, stamp, stamp
   )
   res.json(rowOut(db.prepare('SELECT * FROM attachments WHERE id = ?').get(attachmentId)))
+})
+
+/**
+ * A photo of a till receipt becomes a shopping list. The household's Ollama reads it, the
+ * picture stays on that day as a receipt, and the client builds the list from the answer.
+ */
+app.post('/api/calendars/:calendarId/receipt', auth, requireMember, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'file missing' })
+  const stored = path.join(FILES_DIR, req.file.filename)
+  if (!String(req.file.mimetype || '').startsWith('image/')) {
+    fs.rmSync(stored, { force: true })
+    return res.status(400).json({ error: 'send a picture of the receipt' })
+  }
+  // STOP on the phone aborts the model call and keeps nothing. The tunnel in front of the
+  // server does not pass a client hang-up through, so the client also says it out loud
+  // through /receipt-jobs/:id/stop; the job id is its own.
+  const gone = new AbortController()
+  const jobId = String(req.body?.jobId || uuid())
+  receiptJobs.set(jobId, { owner: req.user.id, abort: gone })
+  res.on('close', () => { if (!res.writableFinished) gone.abort() })
+  try {
+    const receipt = await readReceipt(fs.readFileSync(stored), gone.signal)
+    if (gone.signal.aborted) throw new Error('stopped')
+    const fromDate = receipt.date
+      ? Math.floor(Date.UTC(...receipt.date.split('-').map((n, i) => Number(n) - (i === 1 ? 1 : 0))) / 86400000)
+      : null
+    const today = Number(req.body?.today)
+    const epochDay = fromDate ?? (Number.isFinite(today) ? today : Math.floor(Date.now() / 86400000))
+
+    const stamp = now()
+    const id = uuid()
+    db.prepare(
+      `INSERT INTO attachments
+        (id, calendar_id, owner_type, payment_id, epoch_day, item_id, note_id, file_name, mime,
+         size, storage_name, is_receipt, uploaded_by, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(
+      id, req.calendarId, 'DAY', null, epochDay, null, null,
+      req.file.originalname || 'receipt.jpg', req.file.mimetype, req.file.size || 0, req.file.filename,
+      1, req.user.id, stamp, stamp
+    )
+    res.json({
+      ...receipt,
+      epochDay,
+      attachment: rowOut(db.prepare('SELECT * FROM attachments WHERE id = ?').get(id))
+    })
+  } catch (e) {
+    fs.rmSync(stored, { force: true })
+    console.log(`[receipt failed] ${e.message}`)
+    res.status(gone.signal.aborted ? 499 : 502).json({ error: e.message })
+  } finally {
+    receiptJobs.delete(jobId)
+  }
+})
+
+const receiptJobs = new Map()
+
+app.post('/api/receipt-jobs/:jobId/stop', auth, (req, res) => {
+  const job = receiptJobs.get(req.params.jobId)
+  if (job && job.owner === req.user.id) job.abort.abort()
+  res.json({ stopped: !!job })
 })
 
 /**

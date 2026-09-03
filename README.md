@@ -53,6 +53,10 @@ Everything is offline first: you keep using it on the train, and it catches up w
 - **Shopping lists** you hand to somebody else, with a day and a time. They tick items off as they go and
   type the total at the till; it becomes a paid bill in their name.
 - Item names **autocomplete from what the household has bought before**, and any item can carry a photo.
+- **Already shopped? Photograph the receipt.** A vision model on your own [Ollama](https://ollama.com) server
+  reads it and hands back a list that is already ticked and priced, with the shop as the title and the total
+  as the budget; the picture stays on that day as the receipt. A full screen progress card with a STOP
+  button covers the wait, and STOP really stops the model, not just the phone.
 
 ### Notes
 - A section without dates: recipes, prompts, thoughts, articles, links, photos — categories included, and
@@ -106,6 +110,8 @@ Configure it with environment variables, or with a JSON file pointed at by `PAYP
 | `PORT` | port to listen on |
 | `JWT_SECRET` | signing secret — **set your own**, a random 32+ chars |
 | `DATA_DIR` | where the SQLite file and the uploads live |
+| `OLLAMA_URL` | your Ollama server, for reading receipts (e.g. `http://192.168.1.20:11434`) |
+| `OLLAMA_MODEL` | a model with vision, e.g. `qwen3-vl:8b` |
 
 On Windows, `server/scripts/install-windows-services.ps1` (run elevated) does the whole thing: generates a
 secret, writes the config, registers the server as a scheduled task that starts at boot, and wires a

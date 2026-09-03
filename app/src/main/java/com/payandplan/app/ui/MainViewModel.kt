@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
@@ -267,6 +269,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateItem(item: ShoppingItem) = viewModelScope.launch { repo.updateItem(item) }
     fun deleteItem(item: ShoppingItem) = viewModelScope.launch { repo.deleteItem(item) }
     fun completeList(id: String, cents: Long) = viewModelScope.launch { repo.completeList(id, cents) }
+
+    /**
+     * Hands a receipt photo to the server and reports the id of the list it became. The
+     * returned job can be cancelled from a STOP button; a cancelled run reports nothing.
+     */
+    fun importReceipt(file: java.io.File, mime: String, onResult: (Result<String>) -> Unit): Job {
+        val jobId = java.util.UUID.randomUUID().toString()
+        val job = viewModelScope.launch {
+            val result = runCatching { repo.importReceipt(file, mime, jobId) }
+            if (isActive) onResult(result)
+        }
+        // cancelled from STOP: the server should stop working on it as well
+        job.invokeOnCompletion { cause ->
+            if (cause is kotlinx.coroutines.CancellationException) {
+                viewModelScope.launch { repo.stopReceipt(jobId) }
+            }
+        }
+        return job
+    }
     fun reopenList(list: ShoppingList) = viewModelScope.launch { repo.reopenList(list) }
 
     // ---- notes ----

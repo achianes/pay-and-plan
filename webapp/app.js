@@ -1149,6 +1149,13 @@ function viewLists() {
   const rows = lists().sort((a, b) => (a.status === b.status ? (b.updatedAt || 0) - (a.updatedAt || 0) : a.status === 'OPEN' ? -1 : 1))
   return `${header('SHOPPING')}
     <p class="muted"><small>Make a list, hand it to someone else. When they are done they type in what it cost and it lands in the calendar.</small></p>
+    <div class="card sky tight">
+      <div class="row between">
+        <div class="grow"><b>Already shopped?</b><br><small>Snap the receipt: the items and the prices come out as a list.</small></div>
+        <button class="yellow small" data-act="scan-receipt">📷 RECEIPT</button>
+      </div>
+      <input type="file" id="receipt-file" data-scan="1" accept="image/*" capture="environment" style="display:none" />
+    </div>
     ${rows.length ? rows.map(listRow).join('') : `<div class="card yellow bubble tap" data-act="new-list">
          <div class="emo">🛒</div>No lists yet. Tap here to make one.</div>`}`
 }
@@ -1642,7 +1649,7 @@ function wire(root = document) {
       }
     }
   }
-  root.querySelectorAll('input[type=file]').forEach((el) => {
+  root.querySelectorAll('input[type=file]:not([data-scan])').forEach((el) => {
     el.onchange = async () => {
       const file = el.files[0]
       if (!file) return
@@ -1863,6 +1870,13 @@ async function handle(act, el) {
     }
 
     case 'new-list': closeModals(); return listEditor(null)
+    case 'scan-receipt': {
+      const input = document.getElementById('receipt-file')
+      input.value = ''   // picking the same photo again after STOP must still count as a change
+      input.onchange = () => { if (input.files[0]) importReceipt(input.files[0]) }
+      input.click()
+      return
+    }
     case 'new-note': closeModals(); return noteEditor(null)
     case 'open-note': {
       const note = state.data.notes.find((x) => x.id === id)
@@ -2188,6 +2202,93 @@ function saveList(existingId) {
   touch('shoppingLists', l)
   closeModals()
   render()
+}
+
+/**
+ * Full screen "working on it" card with a running clock and a STOP button. Returns the
+ * abort signal to hand to fetch, plus a way to change the line of text and to close it.
+ */
+function showBusy(emoji, title, text, onStop = null) {
+  const controller = new AbortController()
+  const started = Date.now()
+  const box = document.createElement('div')
+  box.className = 'splash'
+  box.innerHTML = `
+    <div class="card yellow">
+      <div class="emo">${emoji}</div>
+      <h2>${esc(title)}</h2>
+      <div class="bar"><i></i></div>
+      <p id="busy-text" class="muted">${esc(text)}</p>
+      <p id="busy-clock" class="muted"><small>0 s</small></p>
+      <button class="coral" id="busy-stop">✋ STOP</button>
+    </div>`
+  document.body.appendChild(box)
+  const clock = setInterval(() => {
+    const el = box.querySelector('#busy-clock')
+    if (el) el.innerHTML = `<small>${Math.round((Date.now() - started) / 1000)} s</small>`
+  }, 500)
+  const close = () => { clearInterval(clock); box.remove() }
+  box.querySelector('#busy-stop').onclick = () => { controller.abort(); close(); onStop?.() }
+  return {
+    signal: controller.signal,
+    say: (t) => { const el = box.querySelector('#busy-text'); if (el) el.textContent = t },
+    close
+  }
+}
+
+/**
+ * A photo of the till receipt becomes a list that is already ticked and priced: the shop as
+ * the title, every line as an item, the total as the budget. One tap on DONE logs it.
+ */
+async function importReceipt(file) {
+  const jobId = uuid()
+  const form = new FormData()
+  form.append('file', file, file.name || 'receipt.jpg')
+  form.append('today', String(epochDay(today())))
+  form.append('jobId', jobId)
+  const stop = showBusy('📷', 'READING THE RECEIPT', 'Sending the picture…', () => {
+    // tell the server too: the tunnel does not pass our hang-up through
+    api(`/api/receipt-jobs/${jobId}/stop`, { method: 'POST', keepalive: true }).catch(() => {})
+  })
+  const stages = setTimeout(() => stop.say('The model is reading it… usually 10-20 seconds.'), 2500)
+  let r
+  try {
+    r = await api(`/api/calendars/${state.calendarId}/receipt`,
+      { method: 'POST', body: form, signal: stop.signal })
+  } catch (e) {
+    clearTimeout(stages)
+    stop.close()
+    return toast(stop.signal.aborted ? 'Stopped' : e.message)
+  }
+  clearTimeout(stages)
+  stop.close()
+
+  const stamp = Date.now()
+  const me = state.user?.id || null
+  const l = {
+    id: uuid(), title: r.date ? `${r.store} · ${r.date}` : r.store, notes: 'Read from the receipt',
+    colorIndex: 2, dueDate: r.epochDay, dueTimeMinutes: 1080,
+    assignedToUserId: me, createdByUserId: me,
+    budgetCents: r.totalCents, actualCents: null, status: 'OPEN', doneAt: null, doneByUserId: null,
+    paymentId: null, visibility: 'SHARED', createdAt: stamp, updatedAt: stamp, deletedAt: null
+  }
+  state.data.shoppingLists.push(l)
+  touch('shoppingLists', l)
+  r.items.forEach((it, i) => {
+    const item = {
+      id: uuid(), listId: l.id, text: it.name, quantity: it.quantity || '', checked: true,
+      priceCents: it.priceCents, sortIndex: i, createdAt: stamp, updatedAt: stamp, deletedAt: null
+    }
+    state.data.shoppingItems.push(item)
+    touch('shoppingItems', item)
+  })
+  if (r.attachment && !state.data.attachments.some((x) => x.id === r.attachment.id)) {
+    state.data.attachments.push(r.attachment)
+  }
+  persist()
+  render()
+  listDetail(l.id)
+  toast(`${r.items.length} items, ${money(r.totalCents)}`)
 }
 
 /** The shopper types what it really cost: the list closes and a paid bill appears. */

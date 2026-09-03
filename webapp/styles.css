@@ -206,19 +206,21 @@ label { font-weight: 700; font-size: 14px; display: block; margin-top: 6px; }
 .weekdays, .weeks { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .weekdays div { text-align: center; font-size: 11px; font-weight: 700; }
 .day {
-  aspect-ratio: .82;
+  aspect-ratio: 1;
   border: 2px solid var(--ink);
   border-radius: 12px;
   background: var(--paper);
-  padding: 3px;
+  padding: 7px 3px 3px;
   display: flex; flex-direction: column; align-items: center;
   position: relative;
   cursor: pointer;
   font-family: Poster, sans-serif;
   font-size: 14px;
+  line-height: 1.1;
 }
-.day.out { opacity: .42; }
-.day.today { border-width: 3.5px; }
+.day.out { opacity: .55; }
+/* today: a coloured ring outside the normal ink border */
+.day.today { box-shadow: 0 0 0 3px var(--coral); }
 .day.sel { background: var(--yellow); }
 .day.late { background: var(--coral); }
 .day.done { background: var(--mint); }
@@ -227,6 +229,30 @@ label { font-weight: 700; font-size: 14px; display: block; margin-top: 6px; }
 .day .mark { position: absolute; bottom: 1px; font-size: 9px; }
 .day .mark.l { left: 3px; }
 .day .mark.r { right: 3px; }
+
+/* ---------------------------------------------------------------- busy splash */
+
+.splash {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(40, 30, 20, .82);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.splash .card { width: min(420px, 100%); text-align: center; }
+.splash .emo { font-size: 54px; line-height: 1; margin-bottom: 8px; }
+.splash .bar {
+  height: 16px; border: 3px solid var(--ink); border-radius: 10px;
+  background: var(--paper); overflow: hidden; margin: 14px 0 10px;
+}
+.splash .bar i {
+  display: block; height: 100%; width: 40%;
+  background: repeating-linear-gradient(45deg, var(--sky) 0 10px, var(--mint) 10px 20px);
+  animation: slide 1.1s linear infinite;
+}
+@keyframes slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
 
 /* ---------------------------------------------------------------- rows */
 
