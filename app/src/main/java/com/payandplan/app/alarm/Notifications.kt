@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.payandplan.app.MainActivity
 import com.payandplan.app.R
+import com.payandplan.app.data.EntryKind
 import com.payandplan.app.data.Payment
 import com.payandplan.app.util.Format
 import java.time.LocalDate
@@ -62,8 +63,34 @@ object Notifications {
         val late = today - payment.dueDate
         val when0 = LocalDate.ofEpochDay(payment.dueDate)
 
-        val headline = if (late > 0) "OVERDUE by $late day${if (late > 1L) "s" else ""}"
-        else if (late == 0L) "Due today" else "Due ${Format.day(when0)}"
+        val kind = payment.kindEnum
+        val clock = Format.time(payment.dueTimeMinutes)
+        // an appointment is kept, a reminder is done, money comes in or goes out
+        val headline = when (kind) {
+            EntryKind.APPOINTMENT ->
+                if (late > 0) "Missed, was ${Format.day(when0)} at $clock"
+                else if (late == 0L) "Today at $clock" else "${Format.day(when0)} at $clock"
+            EntryKind.REMINDER ->
+                if (late > 0) "OVERDUE by $late day${if (late > 1L) "s" else ""}"
+                else if (late == 0L) "Due today at $clock" else "Due ${Format.day(when0)}"
+            EntryKind.INCOME ->
+                if (late > 0) "Expected $late day${if (late > 1L) "s" else ""} ago"
+                else if (late == 0L) "Expected today" else "Expected ${Format.day(when0)}"
+            EntryKind.BILL ->
+                if (late > 0) "OVERDUE by $late day${if (late > 1L) "s" else ""}"
+                else if (late == 0L) "Due today" else "Due ${Format.day(when0)}"
+        }
+        val doneLabel = when (kind) {
+            EntryKind.APPOINTMENT, EntryKind.REMINDER -> "DONE ✓"
+            EntryKind.INCOME -> "RECEIVED ✓"
+            EntryKind.BILL -> "PAID ✓"
+        }
+        val emoji = when (kind) {
+            EntryKind.APPOINTMENT -> "🗓"
+            EntryKind.REMINDER -> "⏰"
+            EntryKind.INCOME -> "💰"
+            EntryKind.BILL -> "💸"
+        }
 
         val open = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -83,8 +110,8 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Marking as paid always lands in the app when a receipt is required.
-        val paidPi = if (payment.requireReceipt) {
+        // Marking as paid always lands in the app when a receipt is required (bills only).
+        val paidPi = if (payment.requireReceipt && kind == EntryKind.BILL) {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(MainActivity.EXTRA_OPEN_PAYMENT, payment.id)
@@ -106,17 +133,24 @@ object Notifications {
         }
 
         val money = Format.money(payment.amountCents, payment.currency.ifBlank { currency })
+        // an appointment shows where it is, not a price; money only when there is one
+        val detail = when {
+            kind == EntryKind.APPOINTMENT && payment.location.isNotBlank() -> "📍 ${payment.location}"
+            kind == EntryKind.APPOINTMENT || kind == EntryKind.REMINDER ->
+                if (payment.amountCents > 0) money else ""
+            else -> money
+        }
+        val line = if (detail.isBlank()) headline else "$headline  •  $detail"
         val body = buildString {
-            append(headline)
-            append("  •  ")
-            append(money)
-            if (payment.requireReceipt) append("\nReceipt required to close it.")
+            append(line)
+            if (payment.requireReceipt && kind == EntryKind.BILL) append("\nReceipt required to close it.")
+            if (kind != EntryKind.BILL && payment.notes.isNotBlank()) append("\n").append(payment.notes.take(160))
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_DUE)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("💸 ${payment.title}")
-            .setContentText("$headline  •  $money")
+            .setContentTitle("$emoji ${payment.title}")
+            .setContentText(line)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
@@ -125,7 +159,7 @@ object Notifications {
             .setOngoing(late >= 0)
             .setOnlyAlertOnce(false)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .addAction(0, "PAID ✓", paidPi)
+            .addAction(0, doneLabel, paidPi)
             .addAction(0, "Snooze 1h", snoozePi)
             .build()
 
