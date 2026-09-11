@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.payandplan.app.data.Member
@@ -62,7 +63,7 @@ fun PaymentRow(
     }
 
     ComicCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().alpha(if (payment.isSuspended) 0.55f else 1f),
         color = cardColor,
         onClick = onClick,
         contentPadding = PaddingValues(12.dp)
@@ -109,6 +110,7 @@ fun PaymentRow(
                                 income -> "Received"
                                 else -> "Paid"
                             }
+                            payment.isSuspended -> "Suspended"
                             dueToday -> "Today ${Format.time(payment.dueTimeMinutes)}"
                             else -> Format.relative(date, today)
                         },
@@ -174,6 +176,8 @@ fun PaymentRow(
                         color = Ink,
                         modifier = Modifier.rotate(-8f)
                     )
+                    payment.isSuspended ->
+                        Text("PAUSED", style = MaterialTheme.typography.labelSmall, color = Ink)
                     payment.statusEnum == PayStatus.SKIPPED ->
                         Text("SKIPPED", style = MaterialTheme.typography.labelSmall, color = Ink)
                     onQuickPaid != null -> Box(Modifier.padding(top = 4.dp)) {

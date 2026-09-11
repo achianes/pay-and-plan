@@ -84,7 +84,7 @@ fun DayScreen(
                     androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
                         Text("DAY TOTAL", style = MaterialTheme.typography.labelSmall, color = Ink)
                         Text(
-                            Format.money(payments.sumOf { it.amountCents }, currency),
+                            Format.money(payments.filter { !it.isSuspended }.sumOf { it.amountCents }, currency),
                             style = MaterialTheme.typography.headlineMedium,
                             color = Ink
                         )

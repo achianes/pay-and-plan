@@ -284,6 +284,34 @@ class Repository(
         syncQuietly()
     }
 
+    /**
+     * Suspended: kept, but out of every total and silent. With [wholeSeries] every entry of the
+     * series that is still open goes, and the ones the series grows later are born suspended.
+     */
+    suspend fun suspendEntry(id: String, wholeSeries: Boolean) {
+        val p = payments.getById(id) ?: return
+        val rows = if (wholeSeries) payments.wholeSeries(p.seriesId) else listOf(p)
+        rows.filter { it.isOpen }.forEach { row ->
+            payments.update(stamped(row.copy(status = PayStatus.SUSPENDED.name, snoozedUntil = null)))
+            AlarmScheduler.cancel(context, row.id)
+            AlarmScheduler.dismissNotification(context, row.id)
+        }
+        syncQuietly()
+    }
+
+    /** Back in the counts, alarms armed again. */
+    suspend fun resumeEntry(id: String, wholeSeries: Boolean) {
+        val p = payments.getById(id) ?: return
+        val rows = if (wholeSeries) payments.wholeSeries(p.seriesId) else listOf(p)
+        rows.filter { it.isSuspended }.forEach { row ->
+            val back = row.copy(status = PayStatus.PENDING.name)
+            payments.update(stamped(back))
+            AlarmScheduler.schedule(context, back)
+        }
+        topUp(p.seriesId)
+        syncQuietly()
+    }
+
     suspend fun snooze(id: String, minutes: Int) {
         val p = payments.getById(id) ?: return
         val updated = p.copy(snoozedUntil = System.currentTimeMillis() + minutes * 60_000L)

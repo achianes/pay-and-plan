@@ -74,6 +74,7 @@ small { font-size: 13px; }
 .card.coral { background: var(--coral); }
 .card.grape { background: var(--grape); }
 .card.paper { background: var(--paper); }
+.card.suspended { opacity: .55; }
 
 button, .btn {
   font-family: Comic, sans-serif;

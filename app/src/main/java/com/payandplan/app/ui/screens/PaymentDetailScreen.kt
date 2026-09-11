@@ -63,6 +63,7 @@ fun PaymentDetailScreen(
     val currency = vm.currency()
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmStop by remember { mutableStateOf(false) }
+    var askSuspend by remember { mutableStateOf<String?>(null) }   // "suspend" or "resume", for a series
     val context = LocalContext.current
 
     val p = payment
@@ -82,6 +83,7 @@ fun PaymentDetailScreen(
     val late = p.isOpen && date.isBefore(today)
     val canClose = !p.requireReceipt || receipts.isNotEmpty()
     val owner = vm.memberById(p.ownerUserId)
+    val recurring = p.recurrenceEnum != Recurrence.NONE
 
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 40.dp),
@@ -162,6 +164,7 @@ fun PaymentDetailScreen(
                             if (appointment) "DONE" else if (income) "RECEIVED" else "PAID", Mint
                         )
                         p.isSkipped -> StatusStamp("SKIPPED", Paper)
+                        p.isSuspended -> StatusStamp("SUSPENDED", Paper)
                         late -> StatusStamp(Format.relative(date, today), Coral)
                         else -> StatusStamp("WAITING", Yellow)
                     }
@@ -174,7 +177,7 @@ fun PaymentDetailScreen(
         }
 
         item {
-            ComicCard(color = if (canClose) Mint else Paper, modifier = Modifier.fillMaxWidth()) {
+            ComicCard(color = if (p.isSuspended) Paper else if (canClose) Mint else Paper, modifier = Modifier.fillMaxWidth()) {
                 if (p.isPaid) {
                     Text(
                         when {
@@ -198,6 +201,17 @@ fun PaymentDetailScreen(
                     }
                     Box(Modifier.height(10.dp))
                     ComicButton("REOPEN", { vm.markUnpaid(p.id) }, color = Yellow, compact = true)
+                } else if (p.isSuspended) {
+                    Text("⏸ SUSPENDED", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                    Text(
+                        "Out of every total, no alarms. Nothing is lost: resume it when it counts again.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink
+                    )
+                    Box(Modifier.height(10.dp))
+                    ComicButton("▶ RESUME", {
+                        if (recurring) askSuspend = "resume" else vm.resumeEntry(p.id, false)
+                    }, color = Mint)
                 } else {
                     Text(
                         when {
@@ -229,6 +243,10 @@ fun PaymentDetailScreen(
                         )
                         ComicButton("SKIP", { vm.skip(p.id) }, color = Paper, compact = true)
                     }
+                    Box(Modifier.height(8.dp))
+                    ComicButton("⏸ SUSPEND", {
+                        if (recurring) askSuspend = "suspend" else vm.suspendEntry(p.id, false)
+                    }, color = Paper, compact = true)
                     Box(Modifier.height(10.dp))
                     Text("Snooze the alarm", style = MaterialTheme.typography.labelMedium, color = Ink)
                     Box(Modifier.height(6.dp))
@@ -366,6 +384,41 @@ fun PaymentDetailScreen(
             },
             dismissButton = {
                 ComicButton("Keep going", { confirmStop = false }, color = Paper, compact = true)
+            }
+        )
+    }
+
+    askSuspend?.let { mode ->
+        val resuming = mode == "resume"
+        AlertDialog(
+            onDismissRequest = { askSuspend = null },
+            containerColor = Paper,
+            title = {
+                Text(if (resuming) "Resume what?" else "Suspend what?", style = MaterialTheme.typography.titleMedium)
+            },
+            text = {
+                Text(
+                    if (resuming) "Bring back only this one, or every suspended entry of the series."
+                    else "Only this one, or every open entry of the series, the future ones included. " +
+                        "Suspended entries stay on their day but leave every total and stop ringing.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    ComicButton("Only this one", {
+                        askSuspend = null
+                        if (resuming) vm.resumeEntry(p.id, false) else vm.suspendEntry(p.id, false)
+                    }, color = if (resuming) Mint else Coral, compact = true)
+                    Box(Modifier.height(8.dp))
+                    ComicButton("The whole series", {
+                        askSuspend = null
+                        if (resuming) vm.resumeEntry(p.id, true) else vm.suspendEntry(p.id, true)
+                    }, color = if (resuming) Mint else Coral, compact = true)
+                }
+            },
+            dismissButton = {
+                ComicButton("Cancel", { askSuspend = null }, color = Paper, compact = true)
             }
         )
     }

@@ -305,6 +305,8 @@ function itemsOf(listId) {
 }
 const isOpen = (p) => p.status === 'PENDING'
 const isPaid = (p) => p.status === 'PAID'
+// kept, but out of every total and silent until resumed
+const isSuspended = (p) => p.status === 'SUSPENDED'
 const isAppointment = (p) => p.kind === 'APPOINTMENT'
 const isIncome = (p) => p.kind === 'INCOME'
 const isReminder = (p) => p.kind === 'REMINDER'
@@ -442,6 +444,22 @@ function markPaid(payment) {
   return true
 }
 
+/**
+ * Suspended: kept, but out of every total and silent. With [whole] every open entry of the
+ * series goes, and the ones the series grows later are born suspended too.
+ */
+function suspendEntry(payment, whole) {
+  const rows = whole ? seriesOf(payment.seriesId) : [payment]
+  rows.filter(isOpen).forEach((r) => { r.status = 'SUSPENDED'; touch('payments', r) })
+}
+
+/** Back in the counts. */
+function resumeEntry(payment, whole) {
+  const rows = whole ? seriesOf(payment.seriesId) : [payment]
+  rows.filter(isSuspended).forEach((r) => { r.status = 'PENDING'; touch('payments', r) })
+  topUpSeries(payment.seriesId)
+}
+
 function topUpSeries(seriesId) {
   const rows = alive(state.data.payments).filter((p) => p.seriesId === seriesId)
   if (!rows.length) return
@@ -454,7 +472,7 @@ function topUpSeries(seriesId) {
     const d = dateAt(last.dueDate, last.recurrence, i)
     if (last.recurrenceEndDate && epochDay(d) > last.recurrenceEndDate) break
     const row = Object.assign({}, last, {
-      id: uuid(), dueDate: epochDay(d), status: 'PENDING',
+      id: uuid(), dueDate: epochDay(d), status: last.status === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING',
       paidAt: null, paidAmountCents: null, paidByUserId: null,
       createdAt: stamp, updatedAt: stamp
     })
@@ -626,6 +644,7 @@ function viewCalendar() {
   const gridStart = new Date(first); gridStart.setDate(first.getDate() - offset)
 
   const inMonth = payments().filter((p) => {
+    if (isSuspended(p)) return false   // on its day, but out of the counts
     const d = fromEpochDay(p.dueDate)
     return d.getMonth() === state.month.getMonth() && d.getFullYear() === state.month.getFullYear()
   })
@@ -643,7 +662,8 @@ function viewCalendar() {
     const ed = epochDay(d)
     const dayPayments = payments().filter((p) => p.dueDate === ed)
     const late = dayPayments.some((p) => isOpen(p) && isBill(p) && ed < epochDay(today()))
-    const allPaid = dayPayments.length > 0 && dayPayments.every((p) => !isOpen(p))
+    const counted = dayPayments.filter((p) => !isSuspended(p))
+    const allPaid = counted.length > 0 && counted.every((p) => !isOpen(p))
     const classes = ['day']
     if (d.getMonth() !== state.month.getMonth()) classes.push('out')
     if (sameDay(d, today())) classes.push('today')
@@ -708,7 +728,8 @@ function billRow(p) {
   const appt = isAppointment(p)
   const income = isIncome(p)
   const late = isOpen(p) && p.dueDate < epochDay(today())
-  const cls = isPaid(p) ? 'mint'
+  const cls = isSuspended(p) ? 'paper suspended'
+    : isPaid(p) ? 'mint'
     : late ? (appt || income ? 'paper' : 'coral')
     : 'paper'
   const owner = memberById(p.ownerUserId)
@@ -732,7 +753,7 @@ function billRow(p) {
           : esc((p.title || '?').trim()[0] || '?').toUpperCase()}</span>
       <div class="grow">
         <b class="truncate">${esc(p.title)}</b><br>
-        <small>${isPaid(p)
+        <small>${isSuspended(p) ? '⏸ Suspended · ' + relativeLabel(d) : isPaid(p)
           ? (appt || isReminder(p) ? 'Done' : income ? 'Received' : 'Paid')
           : relativeLabel(d)}${badges ? ' · ' + badges : ''}</small>
       </div>
@@ -770,6 +791,7 @@ function viewBills() {
 
   const outTotal30 = pay30.reduce((sum, p) => sum + p.amountCents, 0)
   const inTotal30 = in30.reduce((sum, p) => sum + p.amountCents, 0)
+  const suspended = all.filter(isSuspended).sort(byTime)
 
   // everything of the next 30 days in one chronological run, whatever its type
   const next30 = [...late, ...pay30, ...appt30, ...in30, ...rem30].sort(byTime)
@@ -900,6 +922,8 @@ function viewBills() {
     body += monthSection('Further ahead', '🌙', [...payLater, ...inLater, ...apptLater])
   }
 
+  // whatever the filter, the paused ones wait here, folded, ready to be resumed
+  body += fold('suspended', 'Suspended', '⏸', suspended, false)
   return `${header('MY BILLS')}
     ${ownerChips}
     <div class="card yellow">
@@ -1426,13 +1450,19 @@ function billDetail(id) {
           src="https://www.openstreetmap.org/export/embed.html?bbox=${p.longitude - 0.004}%2C${p.latitude - 0.0025}%2C${p.longitude + 0.004}%2C${p.latitude + 0.0025}&layer=mapnik&marker=${p.latitude}%2C${p.longitude}"></iframe>` : ''}
       <small>${p.installmentCount ? `Installment ${p.installmentIndex}/${p.installmentCount} · ` : ''}${recurrenceLabel(p.recurrence)}${owner ? ' · ' + esc(owner.name) : ''}${p.visibility === 'PRIVATE' ? ' · 🔒 private' : ''}</small>
       <div style="height:8px"></div>
-      <span class="stamp" style="background:${isPaid(p) ? 'var(--mint)' : late ? 'var(--coral)' : 'var(--yellow)'}">
-        ${isPaid(p) ? 'PAID' : late ? relativeLabel(d) : 'WAITING'}</span>
+      <span class="stamp" style="background:${isSuspended(p) ? 'var(--paper)' : isPaid(p) ? 'var(--mint)' : late ? 'var(--coral)' : 'var(--yellow)'}">
+        ${isSuspended(p) ? '⏸ SUSPENDED' : isPaid(p) ? 'PAID' : late ? relativeLabel(d) : 'WAITING'}</span>
       ${p.notes ? `<p>${esc(p.notes)}</p>` : ''}
     </div>
 
-    <div class="card ${canClose ? 'mint' : 'paper'}">
-      ${isPaid(p)
+    <div class="card ${isSuspended(p) ? 'paper' : canClose ? 'mint' : 'paper'}">
+      ${isSuspended(p)
+        ? `<h3>⏸ SUSPENDED</h3>
+           <small class="muted">Out of every total, no alarms. Nothing is lost: resume it when it counts again.</small>
+           <div class="row" style="margin-top:10px">
+             <button class="mint" data-act="resume" data-id="${p.id}">▶ RESUME</button>
+           </div>`
+        : isPaid(p)
         ? `<h3>🎉 ALL DONE</h3><button class="yellow small" data-act="reopen" data-id="${p.id}">REOPEN</button>`
         : `<h3>${canClose
              ? (isAppointment(p) ? 'Been there?' : isReminder(p) ? 'Done with it?'
@@ -1442,6 +1472,7 @@ function billDetail(id) {
              <button class="mint" data-act="pay" data-id="${p.id}" ${canClose ? '' : 'disabled'}>${
                isAppointment(p) || isReminder(p) ? 'MARK DONE ✓'
                : isIncome(p) ? 'MARK RECEIVED ✓' : 'MARK PAID ✓'}</button>
+             <button class="small" data-act="suspend" data-id="${p.id}">⏸ SUSPEND</button>
              <button class="small" data-act="edit-bill" data-id="${p.id}">EDIT</button>
              <button class="coral small" data-act="del-bill" data-id="${p.id}">DELETE</button>
            </div>`}
@@ -1495,9 +1526,9 @@ function daySheet(ed) {
       <div class="row between">
         <div>
           <small>OUT</small><br>
-          <b class="poster" style="font-size:24px">${money(rows.filter(isBill).reduce((s, p) => s + p.amountCents, 0))}</b>
+          <b class="poster" style="font-size:24px">${money(rows.filter((p) => isBill(p) && !isSuspended(p)).reduce((s, p) => s + p.amountCents, 0))}</b>
           ${rows.some(isIncome) ? `<br><small>in </small><b style="color:#2f7d3a">${
-            money(rows.filter(isIncome).reduce((s, p) => s + p.amountCents, 0))}</b>` : ''}
+            money(rows.filter((p) => isIncome(p) && !isSuspended(p)).reduce((s, p) => s + p.amountCents, 0))}</b>` : ''}
         </div>
         <button class="mint small" data-act="new-bill" data-day="${ed}">ADD BILL</button>
       </div>
@@ -1591,7 +1622,7 @@ function listDetail(id) {
               📷<input type="file" accept="image/*" capture="environment"
                        data-item="${i.id}" style="display:none">
             </label>
-            <input class="item-price" data-id="${i.id}" inputmode="decimal" placeholder="€"
+            <input class="item-price" data-id="${i.id}" inputmode="numeric" autocomplete="off" placeholder="€"
                    value="${i.priceCents != null ? centsToInput(i.priceCents) : ''}"
                    style="width:80px;margin:0" />
             <button class="small ghost" data-act="del-item" data-id="${i.id}">×</button>
@@ -1749,11 +1780,26 @@ function wire(root = document) {
       if (button) handle('add-item', button)
     }
   }
+  // till style: only digits, they fill the cents from the right (1-2-5 -> 1.25), the caret
+  // stays at the end and backspace takes the last digit away
   root.querySelectorAll('.item-price').forEach((el) => {
+    const digitsOf = () => el.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 7)
+    const show = (digits) => digits
+      ? `${Math.floor(Number(digits) / 100)}.${String(Number(digits) % 100).padStart(2, '0')}`
+      : ''
+    const toEnd = () => {
+      const n = el.value.length
+      try { el.setSelectionRange(n, n) } catch { /* not a text field */ }
+    }
+    el.oninput = () => { el.value = show(digitsOf()); toEnd() }
+    el.onfocus = toEnd
+    el.onclick = toEnd
+    el.onkeyup = toEnd
     el.onchange = () => {
       const item = state.data.shoppingItems.find((i) => i.id === el.dataset.id)
       if (!item) return
-      item.priceCents = parseAmount(el.value)
+      const digits = digitsOf()
+      item.priceCents = digits ? Number(digits) : null
       touch('shoppingItems', item)
     }
   })
@@ -1836,6 +1882,46 @@ async function handle(act, el) {
       const p = state.data.payments.find((x) => x.id === id)
       if (markPaid(p)) { closeModals(); toast('Closed 🎉'); render() }
       return
+    }
+    case 'suspend':
+    case 'resume': {
+      const p = state.data.payments.find((x) => x.id === id)
+      if (!p) return
+      const act = el.dataset.act
+      const resuming = act === 'resume'
+      if (p.recurrence === 'NONE') {
+        resuming ? resumeEntry(p, false) : suspendEntry(p, false)
+        closeModals(); toast(resuming ? 'Back in the counts' : 'Suspended'); return render()
+      }
+      closeModals()
+      openModal(`
+        <h2>${resuming ? '▶ RESUME WHAT?' : '⏸ SUSPEND WHAT?'}</h2>
+        <p class="muted">${resuming
+          ? 'Bring back only this one, or every suspended entry of the series.'
+          : 'Only this one, or every open entry of the series, the future ones included. ' +
+            'Suspended entries stay on their day but leave every total and stop ringing.'}</p>
+        <div class="row wrap">
+          <button class="${resuming ? 'mint' : 'coral'} grow" data-act="${act}-one" data-id="${p.id}">ONLY THIS ONE</button>
+          <button class="${resuming ? 'mint' : 'coral'} grow" data-act="${act}-all" data-id="${p.id}">THE WHOLE SERIES</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="grow" data-act="close">CANCEL</button>
+        </div>`)
+      return
+    }
+    case 'suspend-one':
+    case 'suspend-all':
+    case 'resume-one':
+    case 'resume-all': {
+      const p = state.data.payments.find((x) => x.id === id)
+      if (!p) return
+      const act = el.dataset.act
+      const whole = act.endsWith('-all')
+      const resuming = act.startsWith('resume')
+      resuming ? resumeEntry(p, whole) : suspendEntry(p, whole)
+      closeModals()
+      toast(resuming ? (whole ? 'The series is back' : 'Back in the counts') : (whole ? 'Series suspended' : 'Suspended'))
+      return render()
     }
     case 'reopen': {
       const p = state.data.payments.find((x) => x.id === id)

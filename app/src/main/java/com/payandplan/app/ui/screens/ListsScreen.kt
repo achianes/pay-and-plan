@@ -56,6 +56,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -492,6 +496,56 @@ fun ListDetailScreen(
     }
 }
 
+/**
+ * A till style amount: only digits go in and they fill the cents from the right, so 1-2-5
+ * reads 1.25. The cursor always sits at the end; backspace takes the last digit away.
+ */
+@Composable
+private fun CashField(
+    key: String,
+    cents: Long?,
+    onCents: (Long?) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    var digits by remember(key) { mutableStateOf(cents?.takeIf { it > 0 }?.toString() ?: "") }
+    // what we sent ourselves comes back from the database a beat later: do not let it rewind us
+    val sent = remember(key) { mutableSetOf<Long?>() }
+    LaunchedEffect(cents) {
+        if (cents !in sent && digits.toLongOrNull() != cents) {
+            digits = cents?.takeIf { it > 0 }?.toString() ?: ""
+        }
+    }
+    ComicField(
+        value = digits,
+        onValueChange = { typed ->
+            val clean = typed.filter { it.isDigit() }.trimStart('0').take(7)
+            digits = clean
+            val value = clean.toLongOrNull()
+            sent += value
+            onCents(value)
+        },
+        label = label,
+        modifier = modifier,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        visualTransformation = CentsTransformation
+    )
+}
+
+private object CentsTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        if (text.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
+        val n = text.text.toLong()
+        val shown = "${n / 100}.${(n % 100).toString().padStart(2, '0')}"
+        // wherever the finger lands, the cursor stays at the end: digits only enter from the right
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int) = shown.length
+            override fun transformedToOriginal(offset: Int) = text.length
+        }
+        return TransformedText(AnnotatedString(shown), mapping)
+    }
+}
+
 @Composable
 private fun MosaicTile(
     vm: MainViewModel,
@@ -557,9 +611,6 @@ private fun ItemRow(
     photo: com.payandplan.app.data.Attachment?
 ) {
     val context = LocalContext.current
-    var price by remember(item.id, item.priceCents) {
-        mutableStateOf(item.priceCents?.let { Format.centsToInput(it) } ?: "")
-    }
     val pendingShot = remember { arrayOfNulls<java.io.File>(1) }
 
     val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
@@ -615,15 +666,12 @@ private fun ItemRow(
             contentDescription = "Photo of the product"
         )
         Box(Modifier.size(80.dp, 56.dp)) {
-            ComicField(
-                price,
-                {
-                    price = it
-                    vm.updateItem(item.copy(priceCents = Format.parseAmountToCents(it)))
-                },
-                currency,
-                Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+            CashField(
+                key = item.id,
+                cents = item.priceCents,
+                onCents = { vm.updateItem(item.copy(priceCents = it)) },
+                label = currency,
+                modifier = Modifier.fillMaxWidth()
             )
         }
         ComicIconButton(

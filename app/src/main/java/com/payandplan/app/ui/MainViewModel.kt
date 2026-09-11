@@ -63,9 +63,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             rows.groupBy { it.dueDate }.mapValues { (day, list) ->
                 DayStat(
                     dueDate = day,
-                    total = list.sumOf { it.amountCents },
+                    total = list.filter { !it.isSuspended }.sumOf { it.amountCents },
                     openCount = list.count { it.isOpen },
-                    paidCount = list.count { !it.isOpen },
+                    // suspended entries are out of the picture: neither done nor open
+                    paidCount = list.count { !it.isOpen && !it.isSuspended },
                     colorIndex = list.firstOrNull()?.colorIndex ?: 0
                 )
             }
@@ -228,6 +229,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun markPaid(id: String) = viewModelScope.launch { repo.markPaid(id) }
     fun markUnpaid(id: String) = viewModelScope.launch { repo.markUnpaid(id) }
     fun skip(id: String) = viewModelScope.launch { repo.skip(id) }
+    fun suspendEntry(id: String, wholeSeries: Boolean) = viewModelScope.launch { repo.suspendEntry(id, wholeSeries) }
+    fun resumeEntry(id: String, wholeSeries: Boolean) = viewModelScope.launch { repo.resumeEntry(id, wholeSeries) }
     fun snooze(id: String, minutes: Int) = viewModelScope.launch { repo.snooze(id, minutes) }
     fun stopSeriesAt(payment: Payment, onDone: () -> Unit = {}) =
         viewModelScope.launch { repo.stopSeriesAt(payment); onDone() }

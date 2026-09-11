@@ -206,7 +206,8 @@ private fun MonthHeader(
 
 @Composable
 private fun MonthSummary(month: YearMonth, payments: List<Payment>, currency: String) {
-    val inMonth = payments.filter { YearMonth.from(LocalDate.ofEpochDay(it.dueDate)) == month }
+    // suspended entries stay on their day but leave every total
+    val inMonth = payments.filter { YearMonth.from(LocalDate.ofEpochDay(it.dueDate)) == month && !it.isSuspended }
     val bills = inMonth.filter { it.isBill }
     val appointments = inMonth.filter { it.isAppointment }
     val incomes = inMonth.filter { it.isIncome }

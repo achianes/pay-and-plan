@@ -42,7 +42,9 @@ object RecurrenceEngine {
             out += template.copy(
                 id = newId(),
                 dueDate = date.toEpochDay(),
-                status = PayStatus.PENDING.name,
+                // a suspended series keeps growing suspended
+                status = if (template.statusEnum == PayStatus.SUSPENDED) PayStatus.SUSPENDED.name
+                else PayStatus.PENDING.name,
                 paidAt = null,
                 paidAmountCents = null,
                 snoozedUntil = null

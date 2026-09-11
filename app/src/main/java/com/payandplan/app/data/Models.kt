@@ -22,7 +22,7 @@ enum class Recurrence(val label: String) {
     }
 }
 
-enum class PayStatus { PENDING, PAID, SKIPPED;
+enum class PayStatus { PENDING, PAID, SKIPPED, SUSPENDED;
     companion object {
         fun from(name: String?): PayStatus = entries.firstOrNull { it.name == name } ?: PENDING
     }
@@ -109,6 +109,8 @@ data class Payment(
     val isBill: Boolean get() = !isAppointment && !isIncome && !isReminder
     val isPaid: Boolean get() = statusEnum == PayStatus.PAID
     val isSkipped: Boolean get() = statusEnum == PayStatus.SKIPPED
+    /** kept, but out of every total and silent until resumed */
+    val isSuspended: Boolean get() = statusEnum == PayStatus.SUSPENDED
     val isOpen: Boolean get() = statusEnum == PayStatus.PENDING
     val isPrivate: Boolean get() = visibility == Visibility.PRIVATE
     val isInstallment: Boolean get() = installmentCount > 0

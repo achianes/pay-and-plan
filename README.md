@@ -39,6 +39,8 @@ Everything is offline first: you keep using it on the train, and it catches up w
 - **Alarms that nag.** A bill with an alarm keeps ringing at its own interval until it is marked paid —
   and, if you asked for it, until a **receipt** is attached.
 - Mark as paid with the real amount and the person who actually paid.
+- **Suspend** an entry, or the whole series from the same place: it stays on its day but leaves
+  every total and stops ringing, until you resume it.
 
 ### Time
 - **Appointments** — doctor, gym, the school meeting — with a time, a duration, a place and an optional cost.

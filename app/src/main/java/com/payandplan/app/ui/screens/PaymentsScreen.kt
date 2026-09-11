@@ -87,6 +87,7 @@ fun PaymentsScreen(
     val in30 = all.filter { it.isIncome && within30(it) }.sortedWith(byTime)
     val inLater = all.filter { it.isIncome && beyond30(it) }
     val received = all.filter { it.isIncome && it.isPaid }.sortedByDescending { it.dueDate }
+    val suspended = all.filter { it.isSuspended }.sortedWith(byTime)
 
     val outTotal30 = pay30.sumOf { it.amountCents }
     val inTotal30 = in30.sumOf { it.amountCents }
@@ -222,6 +223,8 @@ fun PaymentsScreen(
                 )
             }
         }
+        // whatever the filter, the paused ones wait here, folded, ready to be resumed
+        fold("suspended", "Suspended", "⏸", suspended, vm, currency, openBlocks, onOpenPayment, false)
     }
 }
 
