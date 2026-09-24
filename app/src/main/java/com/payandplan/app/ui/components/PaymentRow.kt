@@ -54,6 +54,8 @@ fun PaymentRow(
     val date = LocalDate.ofEpochDay(payment.dueDate)
     val appointment = payment.isAppointment
     val income = payment.isIncome
+    // a reminder is done, never paid
+    val reminder = payment.isReminder
     val overdue = payment.isOpen && date.isBefore(today)
     val dueToday = payment.isOpen && date == today
     val cardColor = when {
@@ -106,7 +108,7 @@ fun PaymentRow(
                     Text(
                         when {
                             payment.isPaid -> when {
-                                appointment -> "Done"
+                                appointment || reminder -> "Done"
                                 income -> "Received"
                                 else -> "Paid"
                             }
@@ -171,7 +173,7 @@ fun PaymentRow(
                 }
                 when {
                     payment.isPaid -> Text(
-                        if (appointment) "DONE!" else if (income) "IN!" else "PAID!",
+                        if (appointment || reminder) "DONE!" else if (income) "IN!" else "PAID!",
                         style = MaterialTheme.typography.labelMedium,
                         color = Ink,
                         modifier = Modifier.rotate(-8f)

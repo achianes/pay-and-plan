@@ -1522,7 +1522,9 @@ function billDetail(id) {
       <small>${p.installmentCount ? `Installment ${p.installmentIndex}/${p.installmentCount} · ` : ''}${recurrenceLabel(p.recurrence)}${owner ? ' · ' + esc(owner.name) : ''}${p.visibility === 'PRIVATE' ? ' · 🔒 private' : ''}</small>
       <div style="height:8px"></div>
       <span class="stamp" style="background:${isSuspended(p) ? 'var(--paper)' : isPaid(p) ? 'var(--mint)' : late ? 'var(--coral)' : 'var(--yellow)'}">
-        ${isSuspended(p) ? '⏸ SUSPENDED' : isPaid(p) ? 'PAID' : late ? relativeLabel(d) : 'WAITING'}</span>
+        ${isSuspended(p) ? '⏸ SUSPENDED'
+          : isPaid(p) ? (isAppointment(p) || isReminder(p) ? 'DONE' : isIncome(p) ? 'RECEIVED' : 'PAID')
+          : late ? relativeLabel(d) : 'WAITING'}</span>
       ${p.notes ? `<p>${esc(p.notes)}</p>` : ''}
     </div>
 

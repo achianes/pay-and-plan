@@ -76,6 +76,8 @@ fun PaymentDetailScreen(
 
     val appointment = p.isAppointment
     val income = p.isIncome
+    // a reminder is done, never paid
+    val reminder = p.isReminder
     val receipts = attachments.filter { it.isReceipt }
     val others = attachments.filter { !it.isReceipt }
     val date = LocalDate.ofEpochDay(p.dueDate)
@@ -161,7 +163,7 @@ fun PaymentDetailScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     when {
                         p.isPaid -> StatusStamp(
-                            if (appointment) "DONE" else if (income) "RECEIVED" else "PAID", Mint
+                            if (appointment || reminder) "DONE" else if (income) "RECEIVED" else "PAID", Mint
                         )
                         p.isSkipped -> StatusStamp("SKIPPED", Paper)
                         p.isSuspended -> StatusStamp("SUSPENDED", Paper)
@@ -217,6 +219,7 @@ fun PaymentDetailScreen(
                         when {
                             !canClose -> "Receipt required first"
                             appointment -> "Been there?"
+                            reminder -> "Done with it?"
                             income -> "Money arrived?"
                             else -> "Ready to close this one?"
                         },
@@ -224,8 +227,8 @@ fun PaymentDetailScreen(
                         color = Ink
                     )
                     Text(
-                        if (canClose) "The alarm stops as soon as you tick it off."
-                        else "Attach the receipt below, then the button wakes up.",
+                        if (!canClose) "Attach the receipt below, then the button wakes up."
+                        else "The alarm stops as soon as you tick it off.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Ink
                     )
@@ -233,7 +236,7 @@ fun PaymentDetailScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ComicButton(
                             text = when {
-                                appointment -> "MARK DONE ✓"
+                                appointment || reminder -> "MARK DONE ✓"
                                 income -> "MARK RECEIVED ✓"
                                 else -> "MARK PAID ✓"
                             },
