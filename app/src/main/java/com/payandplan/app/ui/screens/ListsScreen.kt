@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -74,6 +75,7 @@ import com.payandplan.app.ui.components.ComicChip
 import com.payandplan.app.ui.components.ComicField
 import com.payandplan.app.ui.components.ComicIconButton
 import com.payandplan.app.ui.components.openAttachment
+import com.payandplan.app.util.Faces
 import com.payandplan.app.util.FileStore
 import com.payandplan.app.ui.components.PosterTitle
 import com.payandplan.app.ui.components.SpeechBubble
@@ -141,7 +143,12 @@ fun ListsScreen(
  * Opens Google's barcode scanner and turns what it reads into an item, named and pictured
  * from the Italian food database when the code is known there.
  */
-private fun scanBarcode(context: android.content.Context, listId: String, vm: MainViewModel) {
+private fun scanBarcode(
+    context: android.content.Context,
+    listId: String,
+    vm: MainViewModel,
+    onNeedsName: (String) -> Unit
+) {
     val options = GmsBarcodeScannerOptions.Builder()
         .setBarcodeFormats(
             Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E
@@ -151,12 +158,13 @@ private fun scanBarcode(context: android.content.Context, listId: String, vm: Ma
         .addOnSuccessListener { barcode ->
             val code = barcode.rawValue?.filter { it.isDigit() } ?: return@addOnSuccessListener
             Toast.makeText(context, "Looking up $code…", Toast.LENGTH_SHORT).show()
-            vm.addByBarcode(listId, code) { label ->
-                Toast.makeText(
-                    context,
-                    label?.let { "Added $it" } ?: "Not in the database, added by number",
-                    Toast.LENGTH_LONG
-                ).show()
+            vm.addByBarcode(listId, code) { itemId, named ->
+                if (named) {
+                    Toast.makeText(context, "Added", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Nobody has named this one yet: give it a name", Toast.LENGTH_LONG).show()
+                    onNeedsName(itemId)
+                }
             }
         }
         .addOnFailureListener { e ->
@@ -341,6 +349,7 @@ fun ListDetailScreen(
     var newItem by remember { mutableStateOf("") }
     var actual by remember { mutableStateOf("") }
     var mosaic by remember { mutableStateOf(vm.prefs.listMosaic) }
+    var editItemId by remember { mutableStateOf<String?>(null) }
 
     val l = list
     if (l == null) {
@@ -398,12 +407,14 @@ fun ListDetailScreen(
                         Box(Modifier.height(10.dp))
                     }
                 } else {
-                    items.forEach { item -> ItemRow(vm, item, currency, photos[item.id]) }
+                    items.forEach { item ->
+                        ItemRow(vm, item, currency, photos[item.id]) { editItemId = item.id }
+                    }
                 }
                 Box(Modifier.height(10.dp))
                 val context = LocalContext.current
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    ComicButton("▦", { scanBarcode(context, l.id, vm) }, color = Sky, compact = true)
+                    ComicButton("▦", { scanBarcode(context, l.id, vm) { id -> editItemId = id } }, color = Sky, compact = true)
                     Box(Modifier.size(8.dp))
                     ComicField(newItem, { newItem = it }, "Add something", Modifier.weight(1f))
                     Box(Modifier.size(8.dp))
@@ -494,6 +505,18 @@ fun ListDetailScreen(
             ComicButton("DELETE LIST", { vm.deleteList(l) { onBack() } }, color = Coral, compact = true)
         }
     }
+    editItemId?.let { id ->
+        val target = items.find { it.id == id }
+        if (target == null) editItemId = null
+        else ItemEditDialog(
+            item = target,
+            onSave = { name, quantity ->
+                vm.updateItem(target.copy(text = name, quantity = quantity))
+                editItemId = null
+            },
+            onDismiss = { editItemId = null }
+        )
+    }
 }
 
 /**
@@ -546,6 +569,41 @@ private object CentsTransformation : VisualTransformation {
     }
 }
 
+/** Rename a product and say how much of it: two fields and the usual amounts. */
+@Composable
+private fun ItemEditDialog(
+    item: ShoppingItem,
+    onSave: (String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember(item.id) { mutableStateOf(item.text) }
+    var quantity by remember(item.id) { mutableStateOf(item.quantity) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Paper,
+        title = { Text("THE PRODUCT", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                ComicField(name, { name = it }, "Name", Modifier.fillMaxWidth())
+                Box(Modifier.height(8.dp))
+                ComicField(quantity, { quantity = it }, "How much", Modifier.fillMaxWidth())
+                Box(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("1", "2", "3", "500 g", "1 kg").forEach { q ->
+                        ComicChip(q, quantity == q, { quantity = if (quantity == q) "" else q }, color = Sky)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            ComicButton("SAVE", {
+                if (name.isNotBlank()) onSave(name.trim(), quantity.trim())
+            }, color = Mint, compact = true)
+        },
+        dismissButton = { ComicButton("Cancel", onDismiss, color = Paper, compact = true) }
+    )
+}
+
 @Composable
 private fun MosaicTile(
     vm: MainViewModel,
@@ -572,11 +630,11 @@ private fun MosaicTile(
             )
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("🛒", style = MaterialTheme.typography.displaySmall)
+                Text(Faces.of(item.text), style = MaterialTheme.typography.displaySmall)
             }
         }
         Text(
-            item.text,
+            if (item.quantity.isBlank()) item.text else "${item.text} · ${item.quantity}",
             style = MaterialTheme.typography.labelSmall,
             color = Ink,
             maxLines = 1,
@@ -608,7 +666,8 @@ private fun ItemRow(
     vm: MainViewModel,
     item: ShoppingItem,
     currency: String,
-    photo: com.payandplan.app.data.Attachment?
+    photo: com.payandplan.app.data.Attachment?,
+    onEdit: () -> Unit
 ) {
     val context = LocalContext.current
     val pendingShot = remember { arrayOfNulls<java.io.File>(1) }
@@ -646,14 +705,29 @@ private fun ItemRow(
                     .clickable { openAttachment(context, photo, vm.attachmentSource(photo) as? String ?: "") }
             )
             Box(Modifier.size(8.dp))
+        } else {
+            // bread, cold cuts, whatever comes from the counter: a face instead of nothing
+            Box(
+                Modifier
+                    .size(42.dp)
+                    .background(Paper, RoundedCornerShape(10.dp))
+                    .border(2.dp, Ink, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(Faces.of(item.text), style = MaterialTheme.typography.titleMedium)
+            }
+            Box(Modifier.size(8.dp))
         }
         Text(
-            item.text,
+            if (item.quantity.isBlank()) item.text else "${item.text} · ${item.quantity}",
             style = MaterialTheme.typography.bodyLarge.copy(
                 textDecoration = if (item.checked) TextDecoration.LineThrough else null
             ),
             color = Ink,
-            modifier = Modifier.weight(1f)
+            // tap the name to rename it, or to say how much of it is needed
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onEdit() }
         )
         ComicIconButton(
             Icons.Filled.PhotoCamera,

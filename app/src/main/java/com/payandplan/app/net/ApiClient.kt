@@ -30,6 +30,15 @@ data class AuthResult(val token: String, val userId: String, val name: String, v
 /** A place found on the map. */
 data class Place(val name: String, val lat: Double, val lon: Double)
 
+/** What the Open Facts databases know about a scanned barcode. */
+data class ProductHit(
+    val label: String,
+    val quantity: String,
+    /** false when the entry exists but nobody has named it yet: the shopper has to */
+    val named: Boolean,
+    val attachment: Attachment?
+)
+
 /** What the server read off a photographed till receipt. */
 data class ReceiptItem(val name: String, val quantity: String, val priceCents: Long?)
 data class ReceiptResult(
@@ -286,7 +295,7 @@ class ApiClient(private val prefs: Prefs) {
      * A barcode against the food database. Returns the readable label and, when [itemId] was
      * given, the picture the server stored as that item's photo. Null when it is unknown.
      */
-    suspend fun lookupProduct(calendarId: String, barcode: String, itemId: String?): Pair<String, Attachment?>? {
+    suspend fun lookupProduct(calendarId: String, barcode: String, itemId: String?): ProductHit? {
         val body = JSONObject().put("barcode", barcode)
         if (itemId != null) body.put("itemId", itemId)
         val text = try {
@@ -296,9 +305,13 @@ class ApiClient(private val prefs: Prefs) {
             throw e
         }
         val j = JSONObject(text)
-        val label = j.getJSONObject("product").optString("label")
-        val attachment = j.optJSONObject("attachment")?.let { attachmentOf(it, calendarId) }
-        return label to attachment
+        val product = j.getJSONObject("product")
+        return ProductHit(
+            label = product.optString("label"),
+            quantity = product.optString("quantity"),
+            named = product.optBoolean("named", true),
+            attachment = j.optJSONObject("attachment")?.let { attachmentOf(it, calendarId) }
+        )
     }
 
     /** Free text address -> places on OpenStreetMap, through the server. */

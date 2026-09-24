@@ -336,6 +336,12 @@ iframe.map {
 }
 .items li.done .txt { text-decoration: line-through; opacity: .55; }
 .items input[type=checkbox] { width: 24px; height: 24px; margin: 0; flex: none; }
+.item-face {
+  width: 42px; height: 42px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; line-height: 1;
+  border: 2px solid var(--ink); border-radius: 10px; background: var(--paper);
+}
 .item-photo {
   width: 42px; height: 42px; flex: none;
   object-fit: cover; border-radius: 10px;

@@ -292,6 +292,77 @@ function itemVocabulary() {
 }
 
 /** Optional photo of a product: the most recent picture attached to that item. */
+/**
+ * A face for the products nobody photographs: bread, cold cuts, whatever comes from the
+ * counter with no barcode and no picture. Keep this list in step with Faces.kt on Android.
+ */
+const FACES = [
+  [['prosciutto', 'salame', 'salsicc', 'mortadella', 'speck', 'bresaola', 'wurstel', 'insaccat',
+    'salumi', 'pancetta', 'guanciale', 'ham', 'bacon', 'sausage'], '🥓'],
+  [['pane', 'panino', 'panini', 'baguette', 'focaccia', 'piadina', 'bread', 'toast'], '🍞'],
+  [['brioche', 'cornetto', 'croissant'], '🥐'],
+  [['latte', 'milk', 'panna'], '🥛'],
+  [['formaggio', 'parmigiano', 'mozzarella', 'pecorino', 'ricotta', 'grana', 'scamorza', 'provola', 'cheese', 'parmesan'], '🧀'],
+  [['uova', 'uovo', 'egg'], '🥚'],
+  [['pollo', 'tacchino', 'chicken'], '🍗'],
+  [['carne', 'manzo', 'vitello', 'maiale', 'bistecca', 'macinato', 'meat', 'beef', 'pork', 'steak'], '🥩'],
+  [['pesce', 'tonno', 'salmone', 'gamber', 'vongole', 'cozze', 'fish'], '🐟'],
+  [['pasta', 'spaghetti', 'penne', 'fusilli', 'rigatoni', 'gnocchi', 'noodle'], '🍝'],
+  [['riso', 'rice'], '🍚'],
+  [['pizza'], '🍕'],
+  [['pomodor', 'tomato'], '🍅'],
+  [['insalata', 'lattuga', 'spinaci', 'rucola', 'salad'], '🥬'],
+  [['patat', 'potato'], '🥔'],
+  [['cipoll', 'onion'], '🧅'],
+  [['carot', 'carrot'], '🥕'],
+  [['broccol', 'zucchin', 'verdur', 'melanzan', 'peperon', 'vegetable'], '🥦'],
+  [['mela', 'mele', 'apple'], '🍎'],
+  [['banan'], '🍌'],
+  [['arance', 'arancia', 'mandarin', 'clementin', 'orange'], '🍊'],
+  [['limon', 'lemon'], '🍋'],
+  [['uva', 'grape'], '🍇'],
+  [['fragol', 'strawberr'], '🍓'],
+  [['frutta', 'fruit', 'pesche', 'pere', 'kiwi'], '🍏'],
+  [['caffe', 'coffee', 'cialde', 'capsule'], '☕'],
+  [['tisana', 'camomilla', 'tea'], '🍵'],
+  [['vino', 'wine', 'prosecco'], '🍷'],
+  [['birra', 'beer'], '🍺'],
+  [['acqua', 'water'], '💧'],
+  [['succo', 'juice', 'aranciata', 'cola', 'bibit', 'the '], '🧃'],
+  [['biscott', 'cookie', 'merend', 'crackers', 'taralli', 'biscuit'], '🍪'],
+  [['cioccolat', 'chocolate', 'nutella', 'cacao'], '🍫'],
+  [['gelato', 'ghiacciol', 'ice cream'], '🍨'],
+  [['torta', 'dolc', 'crostata', 'cake'], '🍰'],
+  [['olio', 'oliv', 'oil'], '🫒'],
+  [['sale', 'salt'], '🧂'],
+  [['zucchero', 'sugar', 'caramell'], '🍬'],
+  [['farina', 'flour', 'lievito'], '🌾'],
+  [['miele', 'honey', 'marmellat', 'confettura'], '🍯'],
+  [['yogurt', 'yoghurt', 'cereali'], '🥣'],
+  [['burro', 'butter'], '🧈'],
+  [['detersiv', 'detergent', 'ammorbid', 'candeggi', 'lavatrice', 'piatti', 'sgrassat', 'washing powder', 'laundry', 'dish soap', 'bleach'], '🧴'],
+  [['sapone', 'shampoo', 'bagnoschiuma', 'dentifric', 'deodorant', 'soap', 'toothpaste'], '🧼'],
+  [['carta igienica', 'scottex', 'tovagliol', 'fazzolett', 'napkin', 'toilet'], '🧻'],
+  [['pannolin', 'diaper', 'assorbent'], '🧷'],
+  [['crocchett', 'croccantini', 'gatto', 'cane', 'cat food', 'dog food'], '🐾'],
+  [['medicin', 'farmac', 'tachipirina', 'aspirin', 'integrator', 'pill'], '💊'],
+  [['fiori', 'flower', 'pianta'], '💐'],
+  [['sacchett', 'spazzatura', 'immondizia', 'rubbish', 'bin bag'], '🗑'],
+  [['pila', 'batteri', 'lampadin', 'battery', 'bulb'], '🔋']
+]
+
+// accents off, lower case: "Caffè" and "caffe" have to look the same to the table
+const plainName = (text) => String(text || '').toLowerCase().normalize('NFD').replace(/\p{Mn}+/gu, '')
+
+function itemFace(text) {
+  const name = plainName(text)
+  if (!name) return '🛒'
+  for (const [keys, face] of FACES) {
+    if (keys.some((k) => name.includes(plainName(k)))) return face
+  }
+  return '🛒'
+}
+
 function itemPhoto(itemId) {
   return alive(state.data.attachments)
     .filter((a) => a.itemId === itemId && (a.mime || '').startsWith('image/'))
@@ -1601,8 +1672,8 @@ function listDetail(id) {
       ${items.map((i) => {
         const photo = itemPhoto(i.id)
         return `<div class="tile ${i.checked ? 'done' : ''}" data-act="toggle-item" data-id="${i.id}">
-          ${photo ? `<img src="${fileUrl(photo)}" alt="">` : `<div class="noface">🛒</div>`}
-          <div class="name">${esc(i.text)}</div>
+          ${photo ? `<img src="${fileUrl(photo)}" alt="">` : `<div class="noface">${itemFace(i.text)}</div>`}
+          <div class="name">${esc(i.text)}${i.quantity ? ' · ' + esc(i.quantity) : ''}</div>
           <div class="tick">✓</div>
         </div>`
       }).join('') || '<small class="muted">Empty list.</small>'}
@@ -1616,8 +1687,10 @@ function listDetail(id) {
             ${photo
               ? `<img class="item-photo" data-act="open-photo" data-id="${photo.id}"
                       src="${fileUrl(photo)}" alt="${esc(i.text)}">`
-              : ''}
-            <span class="txt grow">${esc(i.text)}${i.quantity ? ' <small>· ' + esc(i.quantity) + '</small>' : ''}</span>
+              : `<span class="item-face">${itemFace(i.text)}</span>`}
+            <span class="txt grow" data-act="edit-item" data-id="${i.id}" style="cursor:pointer"
+                  title="Rename it, or say how much">${esc(i.text)}${
+              i.quantity ? ' <small>· ' + esc(i.quantity) + '</small>' : ''} <small class="muted">✏️</small></span>
             <label class="chip" style="padding:6px 8px" title="Photo of the product">
               📷<input type="file" accept="image/*" capture="environment"
                        data-item="${i.id}" style="display:none">
@@ -2165,6 +2238,24 @@ async function handle(act, el) {
       if (code.length < 8) return toast('Type the whole number under the bars')
       return addByBarcode(el.dataset.list, code)
     }
+    case 'edit-item': return itemEditor(id)
+    case 'pick-qty': {
+      const field = document.getElementById('i-qty')
+      if (!field) return
+      field.value = field.value.trim() === el.dataset.value ? '' : el.dataset.value
+      return
+    }
+    case 'save-item': {
+      const item = state.data.shoppingItems.find((i) => i.id === id)
+      if (!item) return
+      const name = document.getElementById('i-name').value.trim()
+      if (!name) return toast('Give it a name')
+      item.text = name
+      item.quantity = document.getElementById('i-qty').value.trim()
+      touch('shoppingItems', item)
+      const listId = item.listId
+      closeModals(); listDetail(listId); return toast('Saved')
+    }
     case 'add-item': {
       const input = document.getElementById('new-item')
       const text = input.value.trim()
@@ -2501,6 +2592,27 @@ async function findPlace() {
   }
 }
 
+/** Rename a product and say how much of it: the shopper's words win over the database. */
+function itemEditor(itemId) {
+  const item = state.data.shoppingItems.find((i) => i.id === itemId)
+  if (!item) return
+  const quick = ['1', '2', '3', '500 g', '1 kg', '1 L', '6 x']
+  openModal(`
+    <h2>THE PRODUCT</h2>
+    <label>Name</label>
+    <input id="i-name" value="${esc(item.text)}" autocapitalize="sentences" />
+    <label>How much</label>
+    <input id="i-qty" value="${esc(item.quantity || '')}" placeholder="2, 500 g, 6 x 1 L" />
+    <div class="row wrap" style="margin:8px 0">
+      ${quick.map((q) => `<span class="chip" data-act="pick-qty" data-value="${esc(q)}"
+           style="background:var(--sky)">${esc(q)}</span>`).join('')}
+    </div>
+    <div class="row">
+      <button class="mint grow" data-act="save-item" data-id="${item.id}">SAVE</button>
+      <button class="grow" data-act="close">CANCEL</button>
+    </div>`)
+}
+
 // ---------------------------------------------------------------- barcode
 
 function stopScanner() {
@@ -2573,7 +2685,7 @@ async function addByBarcode(listId, code) {
   busy.close()
   if (found?.product) {
     item.text = found.product.label
-    if (found.product.quantity) item.quantity = ''
+    item.quantity = found.product.quantity || ''
   }
   state.data.shoppingItems.push(item)
   touch('shoppingItems', item)
@@ -2583,7 +2695,14 @@ async function addByBarcode(listId, code) {
   persist()
   closeModals()
   listDetail(listId)
-  toast(found?.product ? `Added ${found.product.label}` : 'Not in the database, added by number')
+  // no name anywhere, or an entry nobody has named yet: the shopper writes it, the scan is not wasted
+  if (!found?.product?.named) {
+    toast(found?.product
+      ? 'Found, but nobody has named it yet'
+      : 'No database has that code: name it yourself')
+    return itemEditor(item.id)
+  }
+  toast(`Added ${found.product.label}`)
 }
 
 /** The shopper types what it really cost: the list closes and a paid bill appears. */

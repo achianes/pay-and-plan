@@ -58,11 +58,17 @@ Everything is offline first: you keep using it on the train, and it catches up w
   this" is never a conversation.
 - **Shopping lists** you hand to somebody else, with a day and a time. They tick items off as they go and
   type the total at the till; it becomes a paid bill in their name.
-- Item names **autocomplete from what the household has bought before**, and any item can carry a photo.
-- **Scan the barcode** instead of typing: the item is looked up in
-  [Open Food Facts](https://it.openfoodfacts.org) (Italian edition) and lands on the list with its name, brand,
-  pack size and a small picture next to it. Works on Android (Google's scanner) and in the web app on iPhone
-  (camera in the page); a number can also be typed by hand.
+- Item names **autocomplete from what the household has bought before**, and any item can carry a photo
+  and a quantity ("2", "500 g", "6 x 1 L"). Tap the name to rename it or change the amount. Everything
+  that comes from the counter with no picture, bread or cold cuts or washing powder, gets an icon of its
+  own from its name.
+- **Scan the barcode** instead of typing: the item lands on the list with its name, brand, pack size and a
+  small picture next to it. The code is looked up across the whole Open Facts family, food first and then
+  [products](https://world.openproductsfacts.org), [beauty](https://world.openbeautyfacts.org) and
+  [pet food](https://world.openpetfoodfacts.org), because a detergent missing from the food database is
+  usually sitting in another one. An unknown code, or an entry nobody has named yet, still becomes an item
+  and asks you for a name. Works on Android (Google's scanner) and in the web app on iPhone (camera in the
+  page); a number can also be typed by hand.
 - **Products keep their face.** Every photo — from the food database or from your camera — is remembered
   by product name: type "Nutella" again next month and the picture comes back on its own.
 - **Mosaic view** of a list: every product as a photo tile, one tap ticks it, another untick it. Handy

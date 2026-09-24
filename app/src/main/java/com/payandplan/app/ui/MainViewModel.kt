@@ -278,8 +278,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repo.deleteList(list); onDone() }
     fun addItem(listId: String, text: String) = viewModelScope.launch { repo.addItem(listId, text) }
 
-    fun addByBarcode(listId: String, code: String, onResult: (String?) -> Unit) =
-        viewModelScope.launch { onResult(repo.addByBarcode(listId, code)) }
+    fun addByBarcode(listId: String, code: String, onResult: (String, Boolean) -> Unit) =
+        viewModelScope.launch {
+            val (itemId, named) = repo.addByBarcode(listId, code)
+            onResult(itemId, named)
+        }
     fun updateItem(item: ShoppingItem) = viewModelScope.launch { repo.updateItem(item) }
     fun deleteItem(item: ShoppingItem) = viewModelScope.launch { repo.deleteItem(item) }
     fun completeList(id: String, cents: Long) = viewModelScope.launch { repo.completeList(id, cents) }
