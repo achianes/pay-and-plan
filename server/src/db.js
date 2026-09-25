@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS shopping_items (
   calendar_id TEXT NOT NULL,
   text TEXT NOT NULL,
   quantity TEXT NOT NULL DEFAULT '',
+  barcode TEXT NOT NULL DEFAULT '',
   checked INTEGER NOT NULL DEFAULT 0,
   price_cents INTEGER,
   sort_index INTEGER NOT NULL DEFAULT 0,
@@ -181,7 +182,8 @@ for (const [table, column, ddl] of [
   ['payments', 'longitude', 'ALTER TABLE payments ADD COLUMN longitude REAL'],
   ['shopping_lists', 'due_time_minutes', 'ALTER TABLE shopping_lists ADD COLUMN due_time_minutes INTEGER NOT NULL DEFAULT 1080'],
   ['attachments', 'item_id', 'ALTER TABLE attachments ADD COLUMN item_id TEXT'],
-  ['attachments', 'note_id', 'ALTER TABLE attachments ADD COLUMN note_id TEXT']
+  ['attachments', 'note_id', 'ALTER TABLE attachments ADD COLUMN note_id TEXT'],
+  ['shopping_items', 'barcode', "ALTER TABLE shopping_items ADD COLUMN barcode TEXT NOT NULL DEFAULT ''"]
 ]) {
   const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column)
   if (!has) db.exec(ddl)

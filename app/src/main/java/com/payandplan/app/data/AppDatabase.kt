@@ -10,7 +10,7 @@ import androidx.room.RoomDatabase
         Payment::class, Attachment::class, DayNote::class,
         ShoppingList::class, ShoppingItem::class, Note::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,7 +22,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Keep in step with the @Database version above. */
-        const val VERSION = 6
+        const val VERSION = 7
 
         @Volatile private var instance: AppDatabase? = null
 

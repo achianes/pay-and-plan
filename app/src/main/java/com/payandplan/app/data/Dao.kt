@@ -247,6 +247,14 @@ interface ShoppingDao {
     @Query("UPDATE shopping_items SET pendingSync = 0 WHERE id IN (:ids)")
     suspend fun clearPendingItems(ids: List<String>)
 
+    /** What the household has already called this code, newest first: the product book. */
+    @Query(
+        """SELECT * FROM shopping_items
+           WHERE calendarId = :calendarId AND barcode = :barcode AND deletedAt IS NULL
+           ORDER BY updatedAt DESC"""
+    )
+    suspend fun itemsWithBarcode(calendarId: String, barcode: String): List<ShoppingItem>
+
     /** Every live item in the calendar except the one asked about; the photo cache reads it. */
     @Query("SELECT * FROM shopping_items WHERE calendarId = :calendarId AND id != :exceptId AND deletedAt IS NULL")
     suspend fun itemsNamed(calendarId: String, exceptId: String): List<ShoppingItem>

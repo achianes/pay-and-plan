@@ -192,6 +192,8 @@ data class ShoppingItem(
     val calendarId: String = "",
     val text: String = "",
     val quantity: String = "",
+    /** the code that was scanned, empty when the item was typed by hand */
+    val barcode: String = "",
     val checked: Boolean = false,
     val priceCents: Long? = null,
     val sortIndex: Int = 0,

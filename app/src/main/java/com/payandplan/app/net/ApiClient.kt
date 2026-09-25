@@ -605,6 +605,7 @@ class ApiClient(private val prefs: Prefs) {
         calendarId = calendarId,
         text = j.optString("text"),
         quantity = j.optString("quantity"),
+        barcode = j.optString("barcode"),
         checked = j.optInt("checked") == 1 || j.optBoolean("checked"),
         priceCents = j.longOrNull("priceCents"),
         sortIndex = j.optInt("sortIndex"),
@@ -616,7 +617,7 @@ class ApiClient(private val prefs: Prefs) {
 
     private fun itemJson(i: ShoppingItem) = JSONObject()
         .put("id", i.id).put("listId", i.listId).put("text", i.text).put("quantity", i.quantity)
-        .put("checked", i.checked).put("priceCents", i.priceCents).put("sortIndex", i.sortIndex)
+        .put("barcode", i.barcode).put("checked", i.checked).put("priceCents", i.priceCents).put("sortIndex", i.sortIndex)
         .put("createdAt", i.createdAt).put("updatedAt", i.updatedAt).put("deletedAt", i.deletedAt)
 }
 

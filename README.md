@@ -67,8 +67,10 @@ Everything is offline first: you keep using it on the train, and it catches up w
   [products](https://world.openproductsfacts.org), [beauty](https://world.openbeautyfacts.org) and
   [pet food](https://world.openpetfoodfacts.org), because a detergent missing from the food database is
   usually sitting in another one. An unknown code, or an entry nobody has named yet, still becomes an item
-  and asks you for a name. Works on Android (Google's scanner) and in the web app on iPhone (camera in the
-  page); a number can also be typed by hand.
+  and asks you for a name: the code stays on the item, so the household learns it. Scan the same thing next
+  month, anywhere in the house, and it comes back with the name and the picture you gave it, without asking
+  anybody. Works on Android (Google's scanner) and in the web app on iPhone (camera in the page); a number
+  can also be typed by hand.
 - **Products keep their face.** Every photo — from the food database or from your camera — is remembered
   by product name: type "Nutella" again next month and the picture comes back on its own.
 - **Mosaic view** of a list: every product as a photo tile, one tap ticks it, another untick it. Handy

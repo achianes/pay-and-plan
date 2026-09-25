@@ -520,12 +520,35 @@ class Repository(
             listId = listId,
             calendarId = _calendarId.value,
             text = "Product $code",
+            barcode = code,
             sortIndex = shopping.getItems(listId).size,
             createdAt = stamp,
             updatedAt = stamp,
             pendingSync = true
         )
         shopping.upsertItem(item)
+
+        // the household's own book first: a name given by hand once is worth more than any
+        // database, and it answers for the products no database has ever heard of
+        val known = shopping.itemsWithBarcode(_calendarId.value, code)
+            .firstOrNull { it.id != item.id && it.text.isNotBlank() && !it.text.startsWith("Product ") }
+        if (known != null) {
+            shopping.upsertItem(
+                item.copy(
+                    text = known.text,
+                    quantity = known.quantity,
+                    updatedAt = System.currentTimeMillis(),
+                    pendingSync = true
+                )
+            )
+            if (attachments.forItem(known.id).isNotEmpty()) {
+                runCatching { api.copyItemPhoto(_calendarId.value, item.id, known.id) }
+                    .getOrNull()?.let { attachments.insert(it) }
+            }
+            syncQuietly()
+            return item.id to true
+        }
+
         val found = runCatching { api.lookupProduct(_calendarId.value, code, item.id) }.getOrNull()
         if (found != null) {
             shopping.upsertItem(

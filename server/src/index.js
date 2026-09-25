@@ -46,8 +46,8 @@ const noteColumns = [
 ]
 
 const itemColumns = [
-  'id', 'list_id', 'calendar_id', 'text', 'quantity', 'checked', 'price_cents', 'sort_index',
-  'created_at', 'updated_at', 'deleted_at'
+  'id', 'list_id', 'calendar_id', 'text', 'quantity', 'barcode', 'checked', 'price_cents',
+  'sort_index', 'created_at', 'updated_at', 'deleted_at'
 ]
 
 const camel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
@@ -424,6 +424,8 @@ app.post('/api/calendars/:calendarId/sync', auth, requireMember, (req, res) => {
         calendarId: cal,
         text: String(it.text || ''),
         quantity: String(it.quantity || ''),
+        // what was scanned, so a name given by hand teaches the household for next time
+        barcode: String(it.barcode || ''),
         checked: it.checked ? 1 : 0,
         priceCents: it.priceCents ?? null,
         sortIndex: Number(it.sortIndex || 0),

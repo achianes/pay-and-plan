@@ -109,6 +109,8 @@ function relativeLabel(d) {
   return dayLabel(d)
 }
 function toast(text) {
+  // one at a time: a message left over from a moment ago reads like the answer to this one
+  document.querySelectorAll('.toast').forEach((old) => old.remove())
   const el = document.createElement('div')
   el.className = 'toast'
   el.textContent = text
@@ -2202,7 +2204,7 @@ async function handle(act, el) {
     case 'quick-item': {
       const listId = el.dataset.list
       const item = {
-        id: uuid(), listId, text: el.dataset.text, quantity: '', checked: false,
+        id: uuid(), listId, text: el.dataset.text, quantity: '', barcode: '', checked: false,
         priceCents: null, sortIndex: itemsOf(listId).length,
         createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null
       }
@@ -2263,7 +2265,7 @@ async function handle(act, el) {
       const text = input.value.trim()
       if (!text) return
       const item = {
-        id: uuid(), listId: el.dataset.list, text, quantity: '', checked: false,
+        id: uuid(), listId: el.dataset.list, text, quantity: '', barcode: '', checked: false,
         priceCents: null, sortIndex: itemsOf(el.dataset.list).length,
         createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null
       }
@@ -2529,7 +2531,7 @@ async function importReceipt(file) {
   touch('shoppingLists', l)
   r.items.forEach((it, i) => {
     const item = {
-      id: uuid(), listId: l.id, text: it.name, quantity: it.quantity || '', checked: true,
+      id: uuid(), listId: l.id, text: it.name, quantity: it.quantity || '', barcode: '', checked: true,
       priceCents: it.priceCents, sortIndex: i, createdAt: stamp, updatedAt: stamp, deletedAt: null
     }
     state.data.shoppingItems.push(item)
@@ -2558,6 +2560,15 @@ function photoTwin(item) {
     if (photo) return twin
   }
   return null
+}
+
+/** Copies one item's photo onto another, server side, so neither depends on the other. */
+async function inheritPhotoFrom(item, twin) {
+  try {
+    const saved = await api(`/api/calendars/${state.calendarId}/items/${item.id}/photo-from/${twin.id}`, { method: 'POST' })
+    if (!state.data.attachments.some((x) => x.id === saved.id)) state.data.attachments.push(saved)
+    persist()
+  } catch { /* no photo is not a problem */ }
 }
 
 /** A product bought before keeps its face: copy the photo onto the new item. */
@@ -2682,10 +2693,28 @@ function barcodeSheet(listId) {
 async function addByBarcode(listId, code) {
   const busy = showBusy('▦', 'LOOKING IT UP', code)
   const item = {
-    id: uuid(), listId, text: `Product ${code}`, quantity: '', checked: false,
+    id: uuid(), listId, text: `Product ${code}`, quantity: '', barcode: code, checked: false,
     priceCents: null, sortIndex: itemsOf(listId).length,
     createdAt: Date.now(), updatedAt: Date.now(), deletedAt: null
   }
+  // the household's own book first: a name given by hand once is worth more than any
+  // database, and it answers for the products no database has ever heard of
+  const known = state.data.shoppingItems
+    .filter((i) => !i.deletedAt && i.barcode === code && i.text && !/^Product \d+$/.test(i.text))
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+  if (known) {
+    busy.close()
+    item.text = known.text
+    item.quantity = known.quantity || ''
+    state.data.shoppingItems.push(item)
+    touch('shoppingItems', item)
+    if (itemPhoto(known.id)) await inheritPhotoFrom(item, known)
+    persist()
+    closeModals()
+    listDetail(listId)
+    return toast(`Added ${item.text}`)
+  }
+
   let found = null
   try {
     found = await api(`/api/calendars/${state.calendarId}/products/lookup`, {
