@@ -66,6 +66,9 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     // Google's ready made barcode scanner UI: no camera code, no permission dialog of our own
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    // Android Auto: the car screen speaks templates, not our own views
+    implementation("androidx.car.app:app:1.4.0")
+    implementation("androidx.car.app:app-projected:1.4.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -148,6 +148,27 @@ CREATE TABLE IF NOT EXISTS shopping_items (
   deleted_at INTEGER,
   FOREIGN KEY (list_id) REFERENCES shopping_lists(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at INTEGER NOT NULL,
+  last_ok INTEGER,
+  failures INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+CREATE TABLE IF NOT EXISTS push_log (
+  payment_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  sent_at INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (payment_id, user_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_list ON shopping_items(list_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_items_cal ON shopping_items(calendar_id, updated_at);
 

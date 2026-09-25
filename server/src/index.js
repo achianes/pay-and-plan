@@ -12,6 +12,7 @@ import { unfurl, fetchImage } from './unfurl.js'
 import { readReceipt } from './receipt.js'
 import { lookupProduct, productImage } from './products.js'
 import { searchPlaces, resolveEventLink } from './places.js'
+import * as push from './push.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = config.port
@@ -712,12 +713,44 @@ if (fs.existsSync(webappDir)) {
   })
 }
 
+// ---------------------------------------------------------------- push
+
+/** The public half of the key a browser needs to subscribe. */
+app.get('/api/push/key', (_req, res) => res.json({ key: push.publicKey }))
+
+app.post('/api/push/subscribe', auth, (req, res) => {
+  try {
+    push.saveSubscription(req.user.id, req.body?.subscription, req.headers['user-agent'])
+    console.log(`[push] ${req.user.email} now has ${push.deviceCount(req.user.id)} device(s)`)
+    res.json({ devices: push.deviceCount(req.user.id) })
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+app.post('/api/push/unsubscribe', auth, (req, res) => {
+  push.dropSubscription(req.body?.endpoint)
+  res.json({ devices: push.deviceCount(req.user.id) })
+})
+
+/** A message on the spot, so the person can see it working before trusting it. */
+app.post('/api/push/test', auth, async (req, res) => {
+  const sent = await push.sendToUser(req.user.id, {
+    title: '🔔 Pay & Plan',
+    body: 'Alerts are on. This is what a reminder will look like.',
+    tag: 'test'
+  })
+  res.json({ sent })
+})
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: now() }))
 
 app.use((err, _req, res, _next) => {
   console.error(err)
   res.status(500).json({ error: String(err.message || err) })
 })
+
+push.startRounds()
 
 app.listen(PORT, () => {
   console.log(`Pay & Plan server listening on http://0.0.0.0:${PORT}`)

@@ -37,6 +37,7 @@ const state = {
   calendars: safeParse(localStorage.getItem(LS.calendars)) || [],
   calendarId: localStorage.getItem(LS.calendarId) || '',
   features: safeParse(localStorage.getItem(LS.features)) || {},
+  pushOn: localStorage.getItem('pp.push') === '1',
   listView: localStorage.getItem('pp.listView') || 'list',
   data: { payments: [], dayNotes: [], attachments: [], shoppingLists: [], shoppingItems: [], notes: [] },
   dirty: new Set(),
@@ -1301,6 +1302,20 @@ function viewSetup() {
       <small class="muted">${esc(state.user?.email || '')}</small>
     </div>
 
+    <div class="card yellow">
+      <h3>🔔 ALERTS</h3>
+      <small class="muted">${pushSupported()
+        ? 'A reminder on this phone when something is due, even with the app closed.'
+        : 'This browser cannot do alerts. On iPhone: Share, then Add to Home Screen, and open it from there.'}</small>
+      <div style="height:10px"></div>
+      <div class="row wrap">
+        ${pushSupported() ? `<button class="mint small" data-act="push-on">${
+          state.pushOn ? '✓ ALERTS ARE ON' : 'TURN ON ALERTS'}</button>` : ''}
+        ${state.pushOn ? `<button class="small" data-act="push-test">SEND A TEST</button>
+          <button class="coral small" data-act="push-off">TURN OFF</button>` : ''}
+      </div>
+    </div>
+
     <div class="card sky">
       <h3>📚 CALENDAR</h3>
       <label>Name</label>
@@ -2375,6 +2390,13 @@ Every bill, appointment, receipt, file and shopping list in it ` +
       } catch (e) { toast(e.message) }
       return
     }
+    case 'push-on': return turnAlertsOn()
+    case 'push-off': return turnAlertsOff()
+    case 'push-test': {
+      return api('/api/push/test', { method: 'POST' })
+        .then((r) => toast(r.sent ? 'Sent to ' + r.sent + ' device(s)' : 'No device is listening'))
+        .catch((e) => toast(e.message))
+    }
     case 'reload-all': {
       Object.keys(localStorage)
         .filter((k) => k.startsWith('pp.since.'))
@@ -2582,6 +2604,78 @@ async function inheritPhoto(item) {
     // the sheet is already open: refresh it in place if it is this list
     if (document.querySelector('.modal') && document.getElementById('new-item')) { closeModals(); listDetail(item.listId) }
   } catch { /* no photo is not a problem */ }
+}
+
+// ---------------------------------------------------------------- alerts
+
+const pushSupported = () =>
+  'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+
+/** The server's public key arrives as base64url; the browser wants the raw bytes. */
+function urlBase64ToUint8Array(base64) {
+  const padded = (base64 + '='.repeat((4 - base64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(padded)
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)))
+}
+
+async function turnAlertsOn() {
+  if (!pushSupported()) return toast('This browser cannot do alerts')
+  try {
+    // iPhone only hands out permission to a web app opened from the Home Screen
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') {
+      return toast(permission === 'denied'
+        ? 'Alerts are blocked in the browser settings'
+        : 'Alerts stay off')
+    }
+    const registration = await navigator.serviceWorker.ready
+    const { key } = await api('/api/push/key')
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key)
+    })
+    const out = await api('/api/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription: subscription.toJSON() })
+    })
+    state.pushOn = true
+    try { localStorage.setItem('pp.push', '1') } catch { /* fine */ }
+    render()
+    toast(`Alerts on, ${out.devices} device(s)`)
+  } catch (e) {
+    toast(e.message || 'Could not turn alerts on')
+  }
+}
+
+async function turnAlertsOff() {
+  try {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    if (subscription) {
+      await api('/api/push/unsubscribe', {
+        method: 'POST', body: JSON.stringify({ endpoint: subscription.endpoint })
+      }).catch(() => {})
+      await subscription.unsubscribe()
+    }
+  } finally {
+    state.pushOn = false
+    try { localStorage.removeItem('pp.push') } catch { /* fine */ }
+    render()
+    toast('Alerts off on this phone')
+  }
+}
+
+/** A notification was tapped: open the entry it was about. */
+function openFromNotification() {
+  const id = new URLSearchParams(location.search).get('open')
+  if (!id) return
+  history.replaceState({}, '', location.pathname)
+  const entry = state.data.payments.find((p) => p.id === id && !p.deletedAt)
+  if (!entry) return
+  state.view = 'calendar'
+  state.selected = fromEpochDay(entry.dueDate)
+  render()
+  billDetail(entry.id)
 }
 
 // ---------------------------------------------------------------- places
@@ -2971,3 +3065,4 @@ if (state.calendarId) loadData()
 render()
 if (state.token) refreshMe().catch(() => {})
 collectShare()
+openFromNotification()

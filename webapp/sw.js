@@ -1,14 +1,14 @@
 /* Pay & Plan service worker: shell cached so the app opens offline,
    API calls always go to the network (the app keeps its own local copy). */
 
-const CACHE = 'payplan-v30'
+const CACHE = 'payplan-v31'
 const SHELL = [
   './',
   'index.html',
-  'app.js?v=30',
-  'vendor/html5-qrcode.min.js?v=30',
-  'styles.css?v=30',
-  'manifest.webmanifest?v=30',
+  'app.js?v=31',
+  'vendor/html5-qrcode.min.js?v=31',
+  'styles.css?v=31',
+  'manifest.webmanifest?v=31',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
@@ -26,6 +26,41 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+  )
+})
+
+/**
+ * A push from the server: the same nagging the Android app does, for the phones that only
+ * have the web app. Safari delivers these to a web app added to the Home Screen.
+ */
+self.addEventListener('push', (event) => {
+  let data = { title: 'Pay & Plan', body: '' }
+  try {
+    data = { ...data, ...event.data.json() }
+  } catch {
+    data.body = event.data ? event.data.text() : ''
+  }
+  event.waitUntil(self.registration.showNotification(data.title, {
+    body: data.body,
+    tag: data.tag || 'payplan',
+    renotify: true,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    data: { url: data.url || './' }
+  }))
+})
+
+/** Tapping it opens the app, on the entry it was about. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = new URL(event.notification.data?.url || './', self.location.origin).href
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        if (client.url.startsWith(self.location.origin)) return client.focus().then(() => client.navigate(target))
+      }
+      return self.clients.openWindow(target)
+    })
   )
 })
 
