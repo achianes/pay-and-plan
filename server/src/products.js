@@ -91,13 +91,34 @@ function shape(product, database, barcode) {
   }
 }
 
-/** The shapes the same barcode can take: scanners hand over what is printed, databases pad. */
+/** The check digit that closes a GTIN: alternating weights, then up to the next ten. */
+function checkDigit(digits) {
+  const sum = [...digits].reverse()
+    .reduce((acc, d, i) => acc + Number(d) * (i % 2 === 0 ? 3 : 1), 0)
+  return String((10 - (sum % 10)) % 10)
+}
+
+/**
+ * The shapes the same barcode can take. A multipack wears an ITF-14, which is the shelf code
+ * with a packaging digit in front and its own check digit; databases keep the 13. Scanners
+ * pad, print short, or hand over a GS1 string with the code inside.
+ */
 function variantsOf(code) {
   const out = [code]
+  if (code.length === 14) {
+    const thirteen = code.slice(1, 13)
+    out.push(thirteen + checkDigit(thirteen))
+  }
   if (code.length < 13) out.push(code.padStart(13, '0'))
   const trimmed = code.replace(/^0+/, '')
   if (trimmed.length >= 8 && trimmed !== code) out.push(trimmed)
   return [...new Set(out)]
+}
+
+/** GS1 strings carry the code behind "01", with the rest of the label after it. */
+function fromGs1(digits) {
+  if (digits.length <= 14 || !digits.startsWith('01')) return digits
+  return digits.slice(2, 16)
 }
 
 /**
@@ -105,7 +126,7 @@ function variantsOf(code) {
  * Returns what a shopping list wants to know, or null when nobody has ever seen that code.
  */
 export async function lookupProduct(rawCode) {
-  const code = String(rawCode || '').replace(/\D/g, '')
+  const code = fromGs1(String(rawCode || '').replace(/\D/g, ''))
   if (code.length < 8 || code.length > 14) throw new Error('that does not look like a product barcode')
 
   for (const variant of variantsOf(code)) {

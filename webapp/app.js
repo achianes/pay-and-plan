@@ -2641,15 +2641,27 @@ function barcodeSheet(listId) {
     </div>`)
 
   if (typeof Html5Qrcode === 'undefined') return
+  // a supermarket shelf is not only EAN-13: multipacks wear ITF-14, the fresh counter prints
+  // GS1 DataBar, and plenty of own brands use Code 128
+  const F = Html5QrcodeSupportedFormats
   const formats = [
-    Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E
-  ]
-  const scanner = new Html5Qrcode('scan-view', { formatsToSupport: formats, verbose: false })
+    F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.UPC_EAN_EXTENSION,
+    F.ITF, F.CODE_128, F.CODE_39, F.CODE_93, F.CODABAR, F.RSS_14, F.RSS_EXPANDED
+  ].filter((f) => f !== undefined)
+  const scanner = new Html5Qrcode('scan-view', {
+    formatsToSupport: formats,
+    // the browser's own detector when there is one: quicker and far better at small bars
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    verbose: false
+  })
   window.__scanner = scanner
   scanner.start(
-    { facingMode: 'environment' },
-    { fps: 10, qrbox: { width: 260, height: 140 } },
+    { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    {
+      fps: 15,
+      // a window worth aiming at: most of the frame, not a stamp in the middle
+      qrbox: (w, h) => ({ width: Math.floor(w * 0.92), height: Math.floor(Math.min(h * 0.6, w * 0.55)) })
+    },
     (code) => {
       if (window.__scanner !== scanner) return   // already handled
       stopScanner()

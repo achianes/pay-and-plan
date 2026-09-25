@@ -1,14 +1,14 @@
 /* Pay & Plan service worker: shell cached so the app opens offline,
    API calls always go to the network (the app keeps its own local copy). */
 
-const CACHE = 'payplan-v27'
+const CACHE = 'payplan-v28'
 const SHELL = [
   './',
   'index.html',
-  'app.js?v=27',
-  'vendor/html5-qrcode.min.js?v=27',
-  'styles.css?v=27',
-  'manifest.webmanifest?v=27',
+  'app.js?v=28',
+  'vendor/html5-qrcode.min.js?v=28',
+  'styles.css?v=28',
+  'manifest.webmanifest?v=28',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',

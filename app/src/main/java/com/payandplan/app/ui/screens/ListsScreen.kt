@@ -150,9 +150,14 @@ private fun scanBarcode(
     onNeedsName: (String) -> Unit
 ) {
     val options = GmsBarcodeScannerOptions.Builder()
+        // a supermarket shelf is not only EAN-13: multipacks wear ITF-14 and own brands Code 128
         .setBarcodeFormats(
-            Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E
+            Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8, Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E,
+            Barcode.FORMAT_ITF, Barcode.FORMAT_CODE_128, Barcode.FORMAT_CODE_39,
+            Barcode.FORMAT_CODE_93, Barcode.FORMAT_CODABAR
         )
+        // small bars from arm's length: let the camera zoom in by itself
+        .enableAutoZoom()
         .build()
     GmsBarcodeScanning.getClient(context, options).startScan()
         .addOnSuccessListener { barcode ->
