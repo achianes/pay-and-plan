@@ -336,6 +336,8 @@ iframe.map {
 }
 .items li.done .txt { text-decoration: line-through; opacity: .55; }
 .items input[type=checkbox] { width: 24px; height: 24px; margin: 0; flex: none; }
+.price-cell { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.price-cell small { font-size: 11px; margin-top: 2px; }
 .item-face {
   width: 42px; height: 42px; flex: none;
   display: flex; align-items: center; justify-content: center;

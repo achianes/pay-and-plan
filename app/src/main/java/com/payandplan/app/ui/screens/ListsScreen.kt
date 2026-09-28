@@ -362,7 +362,7 @@ fun ListDetailScreen(
         return
     }
     val who = vm.memberById(l.assignedToUserId)
-    val suggested = items.mapNotNull { it.priceCents }.sum()
+    val suggested = items.sumOf { Format.lineCost(it.priceCents, it.quantity) }
 
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 60.dp),
@@ -745,13 +745,24 @@ private fun ItemRow(
             contentDescription = "Photo of the product"
         )
         Box(Modifier.size(80.dp, 56.dp)) {
-            CashField(
-                key = item.id,
-                cents = item.priceCents,
-                onCents = { vm.updateItem(item.copy(priceCents = it)) },
-                label = currency,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(horizontalAlignment = Alignment.End) {
+                CashField(
+                    key = item.id,
+                    cents = item.priceCents,
+                    onCents = { vm.updateItem(item.copy(priceCents = it)) },
+                    label = currency,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                // the price is of one: say out loud what the line comes to
+                val many = Format.countOf(item.quantity)
+                if (many > 1 && (item.priceCents ?: 0L) > 0L) {
+                    Text(
+                        "×$many = ${Format.money(Format.lineCost(item.priceCents, item.quantity), currency)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Ink
+                    )
+                }
+            }
         }
         ComicIconButton(
             Icons.Filled.Close, { vm.deleteItem(item) },

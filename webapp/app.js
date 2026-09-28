@@ -366,6 +366,20 @@ function itemFace(text) {
   return '🛒'
 }
 
+/**
+ * How many of the thing, when the quantity says a count: "3", "x2", "2 pz". A weight or a
+ * size ("500 g", "1 L") is one package, whatever it weighs. Keep in step with Format.countOf.
+ */
+function countOf(quantity) {
+  const text = String(quantity || '').trim().toLowerCase()
+  const m = text.match(/^x\s*(\d{1,3})$/) || text.match(/^(\d{1,3})\s*(x|pz|pzi|pezzi|pcs|pieces)?$/)
+  const n = m ? Number(m[1]) : 1
+  return Number.isFinite(n) && n >= 1 && n <= 999 ? n : 1
+}
+
+/** What this line costs: the price is of one, the quantity says how many. */
+const lineCost = (item) => (item.priceCents || 0) * countOf(item.quantity)
+
 function itemPhoto(itemId) {
   return alive(state.data.attachments)
     .filter((a) => a.itemId === itemId && (a.mime || '').startsWith('image/'))
@@ -1673,7 +1687,7 @@ function listDetail(id) {
   if (!l) return
   const items = itemsOf(l.id)
   const who = memberById(l.assignedToUserId)
-  const spent = items.reduce((s, i) => s + (i.priceCents || 0), 0)
+  const spent = items.reduce((s, i) => s + lineCost(i), 0)
   const onList = new Set(items.map((i) => (i.text || '').toLowerCase()))
   const vocabulary = itemVocabulary()
   const usual = vocabulary.filter((v) => !onList.has(v.toLowerCase())).slice(0, 8)
@@ -1714,9 +1728,13 @@ function listDetail(id) {
               📷<input type="file" accept="image/*" capture="environment"
                        data-item="${i.id}" style="display:none">
             </label>
-            <input class="item-price" data-id="${i.id}" inputmode="numeric" autocomplete="off" placeholder="€"
-                   value="${i.priceCents != null ? centsToInput(i.priceCents) : ''}"
-                   style="width:80px;margin:0" />
+            <span class="price-cell">
+              <input class="item-price" data-id="${i.id}" inputmode="numeric" autocomplete="off" placeholder="€"
+                     value="${i.priceCents != null ? centsToInput(i.priceCents) : ''}"
+                     style="width:80px;margin:0" />
+              ${countOf(i.quantity) > 1 && i.priceCents
+                ? `<small class="muted">×${countOf(i.quantity)} = ${money(lineCost(i))}</small>` : ''}
+            </span>
             <button class="small ghost" data-act="del-item" data-id="${i.id}">×</button>
           </li>`
         }).join('') || '<li><small class="muted">Empty list. Add what is needed.</small></li>'}

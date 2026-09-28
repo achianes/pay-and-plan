@@ -50,6 +50,17 @@ const pick = (obj, ...names) => {
   return undefined
 }
 
+/**
+ * How many of the thing, when the quantity says a count: "3", "x2", "2 pz". A weight or a
+ * size ("500 g", "1 L") is one package, whatever it weighs.
+ */
+export function countOf(quantity) {
+  const text = String(quantity || '').trim().toLowerCase()
+  const m = text.match(/^x\s*(\d{1,3})$/) || text.match(/^(\d{1,3})\s*(x|pz|pzi|pezzi|pcs|pieces)?$/)
+  const n = m ? Number(m[1]) : 1
+  return Number.isFinite(n) && n >= 1 && n <= 999 ? n : 1
+}
+
 const cents = (value) => {
   const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(',', '.'))
   return Number.isFinite(n) ? Math.round(n * 100) : null
@@ -104,16 +115,21 @@ export async function readReceipt(buffer, outerSignal = null) {
   const items = (Array.isArray(parsed.items) ? parsed.items : [])
     .map((it) => {
       const quantity = pick(it, 'quantity', 'qty')
+      const printed = quantity == null || String(quantity) === '1' ? '' : String(quantity).trim()
+      const line = cents(pick(it, 'price', 'line_price', 'linePrice', 'amount', 'total'))
+      const many = countOf(printed)
       return {
         name: tidy(pick(it, 'name', 'description', 'item', 'product')),
-        quantity: quantity == null || String(quantity) === '1' ? '' : String(quantity).trim(),
-        priceCents: cents(pick(it, 'price', 'line_price', 'linePrice', 'amount', 'total'))
+        quantity: printed,
+        // a till prints what the whole line cost; the list keeps the price of one, so that
+        // the quantity can do the multiplying like everywhere else
+        priceCents: line == null ? null : Math.round(line / many)
       }
     })
     .filter((it) => it.name)
   if (!items.length) throw new Error('no items could be read from that picture')
 
-  const summed = items.reduce((s, it) => s + (it.priceCents || 0), 0)
+  const summed = items.reduce((s, it) => s + (it.priceCents || 0) * countOf(it.quantity), 0)
   const rawDate = String(pick(parsed, 'date', 'purchase_date') || '')
   const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null
   return {

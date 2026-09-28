@@ -33,6 +33,21 @@ object Format {
         return Math.round(value * 100.0)
     }
 
+    /**
+     * How many of the thing, when the quantity says a count: "3", "x2", "2 pz". A weight or a
+     * size ("500 g", "1 L") is one package, whatever it weighs.
+     */
+    fun countOf(quantity: String?): Int {
+        val text = quantity.orEmpty().trim().lowercase()
+        val m = Regex("^x\\s*(\\d{1,3})$").find(text)
+            ?: Regex("^(\\d{1,3})\\s*(x|pz|pzi|pezzi|pcs|pieces)?$").find(text)
+        val n = m?.groupValues?.get(1)?.toIntOrNull() ?: 1
+        return if (n in 1..999) n else 1
+    }
+
+    /** What a line costs: the price is of one, the quantity says how many. */
+    fun lineCost(priceCents: Long?, quantity: String?): Long = (priceCents ?: 0L) * countOf(quantity)
+
     fun centsToInput(cents: Long): String =
         "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
 
