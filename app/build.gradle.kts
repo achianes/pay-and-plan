@@ -1,9 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+// Release signing secrets live in signing.properties (git-ignored), gradle properties as fallback.
+val signing = Properties().apply {
+    rootProject.file("signing.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun signProp(key: String): String? = signing.getProperty(key) ?: project.findProperty(key) as String?
 
 android {
     namespace = "com.payandplan.app"
@@ -19,13 +27,24 @@ android {
         ksp { arg("room.schemaLocation", "$projectDir/schemas") }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = signProp("RELEASE_STORE_FILE")?.let { rootProject.file(it) }
+            storePassword = signProp("RELEASE_STORE_PASSWORD")
+            keyAlias = signProp("RELEASE_KEY_ALIAS")
+            keyPassword = signProp("RELEASE_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            // the Play Store refuses debug-signed builds: without the secrets, fall back to debug for local tests
+            signingConfig = if (signProp("RELEASE_STORE_FILE") != null) signingConfigs.getByName("release")
+            else signingConfigs.getByName("debug")
         }
     }
 

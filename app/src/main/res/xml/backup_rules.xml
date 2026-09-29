@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older. The server login (payplan_auth.xml) never leaves the phone.
+     Attached files stay out of Google's cloud backup: its 25 MB cap would drop everything
+     at once; the "Save a copy" zip carries them. -->
 <full-backup-content>
     <include domain="database" path="." />
-    <include domain="file" path="attachments/" />
-    <include domain="sharedpref" path="." />
+    <include domain="sharedpref" path="payplan_prefs.xml" />
 </full-backup-content>

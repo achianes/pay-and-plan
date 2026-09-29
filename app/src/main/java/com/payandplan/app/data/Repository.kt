@@ -4,9 +4,14 @@ import android.content.Context
 import android.net.Uri
 import com.payandplan.app.alarm.AlarmScheduler
 import com.payandplan.app.net.ApiClient
+import com.payandplan.app.net.LocalServices
+import com.payandplan.app.net.Place
+import com.payandplan.app.util.CalendarEvent
 import com.payandplan.app.util.FileStore
 import com.payandplan.app.util.Format
 import com.payandplan.app.util.Prefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +28,10 @@ class Repository(
     val prefs: Prefs
 ) {
     val api = ApiClient(prefs)
+    private val local = LocalServices(context)
+
+    /** Working with no server: calendars, people and files all live on this phone. */
+    val isLocal: Boolean get() = prefs.localMode && !api.isLoggedIn
 
     private val payments = db.paymentDao()
     private val attachments = db.attachmentDao()
@@ -127,7 +136,8 @@ class Repository(
             .find(note.title + " " + note.body)?.value ?: return null
         return runCatching {
             saveNote(note)   // it must exist server side before pictures can point at it
-            val (title, text, images) = api.unfurl(_calendarId.value, link, note.id)
+            val (title, text, images) = if (api.isLoggedIn) api.unfurl(_calendarId.value, link, note.id)
+            else local.unfurl(link)?.let { (t, x) -> Triple(t, x, 0) } ?: return null
             val heading = if (title.isBlank()) link else title
             val merged = listOf(
                 note.body.trim().ifBlank { null },
@@ -541,12 +551,20 @@ class Repository(
                     pendingSync = true
                 )
             )
-            if (attachments.forItem(known.id).isNotEmpty()) {
-                runCatching { api.copyItemPhoto(_calendarId.value, item.id, known.id) }
-                    .getOrNull()?.let { attachments.insert(it) }
-            }
+            if (attachments.forItem(known.id).isNotEmpty()) copyItemPhoto(item.id, known.id)
             syncQuietly()
             return item.id to true
+        }
+
+        if (!api.isLoggedIn) {
+            val hit = runCatching { local.lookupProduct(code) }.getOrNull()
+            if (hit != null) {
+                shopping.upsertItem(
+                    item.copy(text = hit.label, quantity = hit.quantity, updatedAt = System.currentTimeMillis(), pendingSync = true)
+                )
+                hit.image?.let { attachFile(it, "$code.jpg", "image/jpeg", null, null, false, item.id) }
+            }
+            return item.id to (hit?.named == true)
         }
 
         val found = runCatching { api.lookupProduct(_calendarId.value, code, item.id) }.getOrNull()
@@ -578,13 +596,34 @@ class Repository(
             .sortedByDescending { it.updatedAt }
         for (twin in twins) {
             if (attachments.forItem(twin.id).isEmpty()) continue
-            val copied = runCatching { api.copyItemPhoto(_calendarId.value, item.id, twin.id) }.getOrNull()
-            if (copied != null) {
-                attachments.insert(copied)
-                return
-            }
+            if (copyItemPhoto(item.id, twin.id)) return
         }
     }
+
+    /** Lends [sourceItemId]'s photo to [itemId]: a server side copy, or a file copy on the phone. */
+    private suspend fun copyItemPhoto(itemId: String, sourceItemId: String): Boolean {
+        if (api.isLoggedIn) {
+            val copied = runCatching { api.copyItemPhoto(_calendarId.value, itemId, sourceItemId) }.getOrNull()
+                ?: return false
+            attachments.insert(copied)
+            return true
+        }
+        val source = attachments.forItem(sourceItemId).firstOrNull { a ->
+            a.localPath?.let { File(it).exists() } == true
+        } ?: return false
+        val from = File(source.localPath!!)
+        val to = File(from.parentFile, "${newId()}_${source.fileName}")
+        if (runCatching { from.copyTo(to) }.isFailure) return false
+        return attachFile(to, source.fileName, source.mime, null, null, false, itemId)
+    }
+
+    /** Address search: through the server when there is one, straight to OpenStreetMap otherwise. */
+    suspend fun searchPlaces(query: String): List<Place> =
+        if (api.isLoggedIn) api.searchPlaces(query) else local.searchPlaces(query)
+
+    /** A Google Calendar link can only be followed by the server; alone, the link becomes a note. */
+    suspend fun resolveEventLink(url: String): CalendarEvent? =
+        if (api.isLoggedIn) api.resolveEventLink(_calendarId.value, url) else null
 
     suspend fun updateItem(item: ShoppingItem) {
         shopping.upsertItem(item.copy(updatedAt = System.currentTimeMillis(), pendingSync = true))
@@ -720,7 +759,42 @@ class Repository(
         prefs.userEmail = email
     }
 
+    /** First start without a server: a person and a calendar of their own, on this phone. */
+    fun startLocal(name: String) {
+        prefs.localMode = true
+        if (prefs.userId.isBlank()) prefs.userId = "local-" + newId()
+        prefs.userName = name.ifBlank { "Me" }
+        prefs.receiptsEnabled = false
+        if (_calendars.value.isEmpty()) {
+            val cal = localCalendar("Home")
+            cacheCalendars(listOf(cal))
+            switchCalendar(cal.id)
+        }
+    }
+
+    private fun localMe() = Member(prefs.userId, prefs.userName.ifBlank { "Me" }, "", 0, "owner")
+
+    private fun localCalendar(name: String) = CalendarSpace(
+        id = newId(), name = name, colorIndex = _calendars.value.size % 8, currency = prefs.currency,
+        ownerUserId = prefs.userId, inviteCode = "", members = listOf(localMe())
+    )
+
+    /** Every row of a calendar kept only on this phone, files and alarms included. */
+    private suspend fun wipeLocalCalendar(id: String) = withContext(Dispatchers.IO) {
+        val sql = db.openHelper.writableDatabase
+        sql.query("SELECT localPath FROM attachments WHERE calendarId = ?", arrayOf(id)).use { c ->
+            while (c.moveToNext()) c.getString(0)?.let { FileStore.delete(it) }
+        }
+        sql.query("SELECT id FROM payments WHERE calendarId = ?", arrayOf(id)).use { c ->
+            while (c.moveToNext()) AlarmScheduler.cancel(context, c.getString(0))
+        }
+        listOf("payments", "attachments", "day_notes", "shopping_items", "shopping_lists", "notes")
+            .forEach { table -> sql.execSQL("DELETE FROM $table WHERE calendarId = ?", arrayOf(id)) }
+        db.invalidationTracker.refreshVersionsAsync()
+    }
+
     suspend fun refreshAccount() {
+        if (!api.isLoggedIn) return
         val (me, calendars, receipts) = api.me()
         prefs.userName = me.name
         prefs.userEmail = me.email
@@ -746,6 +820,12 @@ class Repository(
     }
 
     suspend fun createCalendar(name: String) = runCatching {
+        if (isLocal) {
+            val cal = localCalendar(name)
+            cacheCalendars(_calendars.value + cal)
+            switchCalendar(cal.id)
+            return@runCatching
+        }
         val cal = api.createCalendar(name)
         refreshAccount()
         switchCalendar(cal.id)
@@ -758,6 +838,13 @@ class Repository(
     }
 
     suspend fun renameCalendar(name: String, currency: String) = runCatching {
+        if (isLocal) {
+            cacheCalendars(_calendars.value.map {
+                if (it.id == _calendarId.value) it.copy(name = name.ifBlank { it.name }, currency = currency) else it
+            })
+            prefs.currency = currency
+            return@runCatching
+        }
         api.updateCalendar(_calendarId.value, name, currency)
         refreshAccount()
     }
@@ -775,6 +862,13 @@ class Repository(
     /** Owner only: wipes the calendar for everybody, so the caller must be sure. */
     suspend fun deleteCurrentCalendar() = runCatching {
         val id = _calendarId.value
+        if (isLocal) {
+            wipeLocalCalendar(id)
+            val rest = _calendars.value.filter { it.id != id }
+            cacheCalendars(rest)
+            switchCalendar(rest.firstOrNull()?.id ?: "")
+            return@runCatching
+        }
         api.deleteCalendar(id)
         prefs.setLastSync(id, 0L)
         refreshAccount()
@@ -788,6 +882,11 @@ class Repository(
     }
 
     suspend fun updateMyName(name: String) = runCatching {
+        if (isLocal) {
+            prefs.userName = name
+            cacheCalendars(_calendars.value.map { cal -> cal.copy(members = listOf(localMe())) })
+            return@runCatching
+        }
         api.updateMe(name)
         prefs.userName = name
         refreshAccount()

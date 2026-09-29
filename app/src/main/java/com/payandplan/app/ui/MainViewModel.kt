@@ -40,7 +40,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val syncing = repo.syncing
     val syncError = repo.lastError
 
-    private val _signedIn = MutableStateFlow(repo.api.isLoggedIn)
+    /** Past the first screen: logged in to a server, or working on this phone only. */
+    private val _signedIn = MutableStateFlow(repo.api.isLoggedIn || repo.isLocal)
     val signedIn: StateFlow<Boolean> = _signedIn.asStateFlow()
 
     private val _month = MutableStateFlow(YearMonth.now())
@@ -152,6 +153,41 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _signedIn.value = repo.api.isLoggedIn
             onResult(result.exceptionOrNull()?.message)
         }
+
+    /** No server, no account: straight in, with a calendar kept on this phone. */
+    fun startLocal(name: String) {
+        repo.startLocal(name)
+        _receiptsEnabled.value = false
+        _signedIn.value = true
+    }
+
+    fun isLocal() = repo.isLocal
+
+    /** Writes the whole copy into a file the user picked (Drive included). Null message = done. */
+    fun saveCopy(uri: Uri, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val app = getApplication<Application>()
+        val r = runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                app.contentResolver.openOutputStream(uri)?.use {
+                    com.payandplan.app.data.Backup.export(app, com.payandplan.app.data.AppDatabase.get(app), it)
+                } ?: throw java.io.IOException("Cannot write there")
+            }
+        }
+        onResult(r.exceptionOrNull()?.let { it.message ?: "Could not save the copy" })
+    }
+
+    /** Puts a saved copy back and restarts the app; on failure nothing changes and the reason comes back. */
+    fun restoreCopy(uri: Uri, onResult: (String?) -> Unit) = viewModelScope.launch {
+        val app = getApplication<Application>()
+        val r = runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                app.contentResolver.openInputStream(uri)?.use { com.payandplan.app.data.Backup.restore(app, it) }
+                    ?: throw java.io.IOException("Cannot read that file")
+            }
+        }
+        if (r.isSuccess) com.payandplan.app.data.Backup.restart(app)
+        else onResult(r.exceptionOrNull()?.message ?: "Could not restore the copy")
+    }
 
     fun signOut() {
         repo.signOut()
@@ -329,11 +365,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Asks the server what event hides behind a shared Google Calendar link. */
     suspend fun resolveEventLink(url: String): CalendarEvent? =
-        runCatching { repo.api.resolveEventLink(repo.calendarIdNow(), url) }.getOrNull()
+        runCatching { repo.resolveEventLink(url) }.getOrNull()
 
-    /** Address -> places on the map, through the server. */
+    /** Address -> places on the map, through the server or straight to OpenStreetMap. */
     fun searchPlaces(query: String, onResult: (List<com.payandplan.app.net.Place>) -> Unit) =
-        viewModelScope.launch { onResult(runCatching { repo.api.searchPlaces(query) }.getOrDefault(emptyList())) }
+        viewModelScope.launch { onResult(runCatching { repo.searchPlaces(query) }.getOrDefault(emptyList())) }
     fun consumeEvent() { _sharedEvent.value = null }
 
     fun attachSharedFiles(noteId: String, uris: List<Uri>) = viewModelScope.launch {

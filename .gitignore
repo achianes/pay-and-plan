@@ -23,3 +23,7 @@ config.json
 
 # --- scratch ---
 LoopTest.java
+
+# --- release signing: never in git ---
+signing.properties
+keystore/

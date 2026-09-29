@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+. The server login (payplan_auth.xml) never leaves the phone. Attached files
+     go only phone-to-phone (no size cap there) and in the "Save a copy" zip: in Google's
+     cloud backup the 25 MB cap would drop everything at once. -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="database" path="." />
-        <include domain="file" path="attachments/" />
-        <include domain="sharedpref" path="." />
+        <include domain="sharedpref" path="payplan_prefs.xml" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="." />
         <include domain="file" path="attachments/" />
-        <include domain="sharedpref" path="." />
+        <include domain="sharedpref" path="payplan_prefs.xml" />
     </device-transfer>
 </data-extraction-rules>

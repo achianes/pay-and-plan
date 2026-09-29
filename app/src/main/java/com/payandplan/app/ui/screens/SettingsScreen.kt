@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -60,6 +62,7 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
     val syncError by vm.syncError.collectAsState()
     val calendar = vm.currentCalendar()
     val isOwner = calendar?.ownerUserId == vm.myUserId()
+    val local = vm.isLocal()
 
     var myName by remember(prefs.userName) { mutableStateOf(prefs.userName) }
     var calName by remember(calendar?.id, calendar?.name) { mutableStateOf(calendar?.name ?: "") }
@@ -87,11 +90,11 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
                 Text("👤 YOU", style = MaterialTheme.typography.headlineSmall, color = Ink)
                 Box(Modifier.height(8.dp))
                 ComicField(myName, { myName = it }, "Your name", Modifier.fillMaxWidth())
-                Text(prefs.userEmail, style = MaterialTheme.typography.bodySmall, color = Ink)
+                if (!local) Text(prefs.userEmail, style = MaterialTheme.typography.bodySmall, color = Ink)
                 Box(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ComicButton("SAVE", { vm.updateMyName(myName) }, color = Mint, compact = true)
-                    ComicButton("LOG OUT", { vm.signOut(); onSignedOut() }, color = Coral, compact = true)
+                    if (!local) ComicButton("LOG OUT", { vm.signOut(); onSignedOut() }, color = Coral, compact = true)
                 }
             }
         }
@@ -100,14 +103,14 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
             ComicCard(color = Sky, modifier = Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("📚 CALENDAR", style = MaterialTheme.typography.headlineSmall, color = Ink, modifier = Modifier.weight(1f))
-                    ComicButton(
+                    if (!local) ComicButton(
                         if (syncing) "SYNCING..." else "SYNC NOW",
                         { vm.syncNow() },
                         color = Yellow, compact = true
                     )
                 }
                 Box(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!local) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "Missing something? Pull the whole calendar again from the server.",
                         style = MaterialTheme.typography.bodySmall,
@@ -135,6 +138,7 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
                     ComicButton("SAVE CALENDAR", { vm.renameCalendar(calName, vm.currency()) }, color = Mint, compact = true)
                 }
 
+                if (!local) {
                 Box(Modifier.height(14.dp))
                 Text("👥 PEOPLE", style = MaterialTheme.typography.headlineSmall, color = Ink)
                 Box(Modifier.height(6.dp))
@@ -183,6 +187,7 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
                         ComicButton("NEW CODE", { vm.rotateInvite() }, color = Yellow, compact = true)
                     }
                 }
+                }
             }
         }
 
@@ -190,12 +195,14 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
             ComicCard(color = Grape, modifier = Modifier.fillMaxWidth()) {
                 Text("➕ ANOTHER CALENDAR", style = MaterialTheme.typography.headlineSmall, color = Ink)
                 Box(Modifier.height(8.dp))
-                ComicField(joinCode, { joinCode = it.uppercase() }, "Join with a code", Modifier.fillMaxWidth())
-                joinError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Ink) }
-                ComicButton("JOIN", {
-                    vm.joinCalendar(joinCode.trim()) { err -> joinError = err; if (err == null) joinCode = "" }
-                }, color = Mint, compact = true)
-                Box(Modifier.height(12.dp))
+                if (!local) {
+                    ComicField(joinCode, { joinCode = it.uppercase() }, "Join with a code", Modifier.fillMaxWidth())
+                    joinError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Ink) }
+                    ComicButton("JOIN", {
+                        vm.joinCalendar(joinCode.trim()) { err -> joinError = err; if (err == null) joinCode = "" }
+                    }, color = Mint, compact = true)
+                    Box(Modifier.height(12.dp))
+                }
                 ComicField(newCalName, { newCalName = it }, "Create a new one", Modifier.fillMaxWidth())
                 ComicButton("CREATE", {
                     if (newCalName.isNotBlank()) { vm.createCalendar(newCalName.trim()); newCalName = "" }
@@ -219,7 +226,9 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
                 dangerError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Ink) }
                 if (isOwner) {
                     Text(
-                        "Deleting this calendar removes its bills, appointments, receipts and " +
+                        if (local) "Deleting this calendar removes its bills, appointments, receipts and " +
+                            "shopping lists from this phone. It cannot be undone."
+                        else "Deleting this calendar removes its bills, appointments, receipts and " +
                             "shopping lists for everyone in it. It cannot be undone.",
                         style = MaterialTheme.typography.bodySmall, color = Ink
                     )
@@ -331,11 +340,14 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
             }
         }
 
+        item { BackupCard(vm) }
+
         item {
             ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
                 Text("PAY & PLAN", style = MaterialTheme.typography.headlineSmall, color = Ink)
                 Text(
-                    "Server: ${prefs.serverUrl}\nThe same account opens the web app, so an iPhone " +
+                    if (local) "Everything stays on this phone: no account, no server."
+                    else "Server: ${prefs.serverUrl}\nThe same account opens the web app, so an iPhone " +
                         "can share the very same calendar.",
                     style = MaterialTheme.typography.bodyMedium, color = Ink
                 )
@@ -436,5 +448,78 @@ private fun ToggleLine(label: String, checked: Boolean, onChange: (Boolean) -> U
                 uncheckedBorderColor = Ink
             )
         )
+    }
+}
+
+/**
+ * The phone's own backup (Google's, set up in the phone settings) plus a copy by hand: a .zip
+ * saved through the system picker, so it can land on Google Drive with no account in the app.
+ */
+@Composable
+private fun BackupCard(vm: MainViewModel) {
+    val context = LocalContext.current
+    var message by remember { mutableStateOf<String?>(null) }
+    var pendingRestore by remember { mutableStateOf<Uri?>(null) }
+    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) vm.saveCopy(uri) { err -> message = err ?: "💾 Copy saved" }
+    }
+    val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) pendingRestore = uri
+    }
+    ComicCard(color = Sky, modifier = Modifier.fillMaxWidth()) {
+        Text("💾 BACKUP", style = MaterialTheme.typography.headlineSmall, color = Ink)
+        Text(
+            "The phone's automatic backup keeps bills, lists and notes (big files go only in a saved copy). " +
+                "Or save a full copy wherever you like, Google Drive included.",
+            style = MaterialTheme.typography.bodySmall, color = Ink
+        )
+        message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Ink) }
+        Box(Modifier.height(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ComicButton("SAVE A COPY", {
+                    message = null
+                    save.launch("payandplan-backup-${java.time.LocalDate.now()}.zip")
+                }, color = Mint, compact = true)
+                ComicButton("RESTORE", {
+                    message = null
+                    open.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                }, color = Yellow, compact = true)
+            }
+            ComicButton("Phone backup settings", { openBackupSettings(context) }, color = Paper, compact = true)
+        }
+    }
+    pendingRestore?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            containerColor = Paper,
+            title = { Text("Restore this copy?", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    "Everything in the app is replaced by the copy, then Pay & Plan starts again.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                ComicButton("RESTORE", {
+                    pendingRestore = null
+                    vm.restoreCopy(uri) { err -> message = err }
+                }, color = Coral, compact = true)
+            },
+            dismissButton = { ComicButton("Keep mine", { pendingRestore = null }, color = Paper, compact = true) }
+        )
+    }
+}
+
+/** Google's backup page when the phone has it, otherwise the closest settings page. */
+private fun openBackupSettings(context: android.content.Context) {
+    val tries = listOf(
+        Intent("com.google.android.gms.backup.ACTION_BACKUP_SETTINGS"),
+        Intent().setClassName("com.google.android.gms", "com.google.android.gms.backup.component.BackupSettingsActivity"),
+        Intent(Settings.ACTION_PRIVACY_SETTINGS),
+        Intent(Settings.ACTION_SETTINGS)
+    )
+    for (i in tries) {
+        if (runCatching { context.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
     }
 }

@@ -33,5 +33,11 @@ abstract class AppDatabase : RoomDatabase() {
                 "payandplan.db"
             ).fallbackToDestructiveMigration().build().also { instance = it }
         }
+
+        /** Lets a restored copy replace the file underneath. */
+        fun close() = synchronized(this) {
+            instance?.close()
+            instance = null
+        }
     }
 }

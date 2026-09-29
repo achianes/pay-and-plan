@@ -42,7 +42,8 @@ fun LoginScreen(vm: MainViewModel, onSignedIn: () -> Unit) {
     var signUp by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var showServer by remember { mutableStateOf(false) }
+    var showServer by remember { mutableStateOf(server.isBlank()) }
+    var myName by remember { mutableStateOf("") }
 
     fun submit() {
         error = null
@@ -66,6 +67,29 @@ fun LoginScreen(vm: MainViewModel, onSignedIn: () -> Unit) {
                 "Bills, receipts and shopping, shared with the people you live with.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Ink
+            )
+        }
+
+        item {
+            ComicCard(color = Yellow, modifier = Modifier.fillMaxWidth()) {
+                Text("📱 ON THIS PHONE", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                Text(
+                    "No account, no server: bills, lists, notes and receipts stay on this phone. " +
+                        "The phone's own backup keeps them safe, and you can save a copy wherever you like.",
+                    style = MaterialTheme.typography.bodyMedium, color = Ink
+                )
+                Box(Modifier.height(8.dp))
+                ComicField(myName, { myName = it }, "Your name", Modifier.fillMaxWidth())
+                Box(Modifier.height(10.dp))
+                ComicButton("START", { vm.startLocal(myName.trim()) }, color = Mint)
+            }
+        }
+
+        item {
+            Text(
+                "Sharing with the people you live with? That needs a Pay & Plan server of your own.",
+                style = MaterialTheme.typography.bodySmall, color = Ink,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
             )
         }
 
@@ -99,7 +123,7 @@ fun LoginScreen(vm: MainViewModel, onSignedIn: () -> Unit) {
                         text = if (busy) "..." else if (signUp) "CREATE ACCOUNT" else "LOG IN",
                         onClick = { if (!busy) submit() },
                         color = Mint,
-                        enabled = !busy && email.isNotBlank() && password.length >= 6
+                        enabled = !busy && email.isNotBlank() && password.length >= 6 && server.isNotBlank()
                     )
                     ComicButton(
                         text = if (signUp) "I HAVE ONE" else "SIGN UP",
@@ -126,14 +150,14 @@ fun LoginScreen(vm: MainViewModel, onSignedIn: () -> Unit) {
                     Box(Modifier.height(8.dp))
                     ComicField(server, { server = it }, "Server address", Modifier.fillMaxWidth())
                 } else {
-                    Text(server, style = MaterialTheme.typography.bodySmall, color = Ink)
+                    Text(server.ifBlank { "none" }, style = MaterialTheme.typography.bodySmall, color = Ink)
                 }
             }
         }
 
         item {
             Text(
-                "Your data lives on your own server. The same account works in the web app,\n" +
+                "With a server, your data lives there. The same account works in its web app,\n" +
                     "so an iPhone can join the very same calendar.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Ink,

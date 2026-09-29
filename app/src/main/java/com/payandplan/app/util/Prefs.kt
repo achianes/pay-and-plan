@@ -5,6 +5,25 @@ import android.content.Context
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("payplan_prefs", Context.MODE_PRIVATE)
 
+    /**
+     * The server token lives in a file of its own: the phone's backup and the saved copy take
+     * payplan_prefs, never this one, so a login does not travel to Google's cloud or a zip.
+     */
+    private val auth = context.getSharedPreferences(AUTH_FILE, Context.MODE_PRIVATE)
+
+    init {
+        // older builds kept the token next to everything else
+        sp.getString("token", null)?.let { old ->
+            if (old.isNotBlank()) auth.edit().putString("token", old).apply()
+            sp.edit().remove("token").apply()
+        }
+    }
+
+    /** No account, no server: everything stays on this phone. */
+    var localMode: Boolean
+        get() = sp.getBoolean("local_mode", false)
+        set(v) = sp.edit().putBoolean("local_mode", v).apply()
+
     // ---------------------------------------------------------------- account
 
     var serverUrl: String
@@ -12,8 +31,8 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString("server_url", v.trim().trimEnd('/')).apply()
 
     var token: String
-        get() = sp.getString("token", "") ?: ""
-        set(v) = sp.edit().putString("token", v).apply()
+        get() = auth.getString("token", "") ?: ""
+        set(v) = auth.edit().putString("token", v).apply()
 
     var userId: String
         get() = sp.getString("user_id", "") ?: ""
@@ -67,8 +86,9 @@ class Prefs(context: Context) {
         sp.edit().putLong("since_$calendarId", value).apply()
 
     fun signOut() {
+        auth.edit().remove("token").apply()
         sp.edit()
-            .remove("token").remove("user_id").remove("user_name").remove("user_email")
+            .remove("user_id").remove("user_name").remove("user_email")
             .remove("calendar_id").remove("calendars_json")
             .apply()
     }
@@ -102,6 +122,9 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putBoolean("week_monday", v).apply()
 
     companion object {
-        const val DEFAULT_SERVER = "https://pay.achianes.net"
+        /** Nothing by default: a server is only for those who run their own. */
+        const val DEFAULT_SERVER = ""
+        const val FILE = "payplan_prefs"
+        const val AUTH_FILE = "payplan_auth"
     }
 }
