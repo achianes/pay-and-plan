@@ -184,6 +184,33 @@ the date, every purchased line with its price, and the total as JSON. The answer
 already ticked and priced; the photo is kept as that day's receipt. A read takes 10–20 seconds on a
 27B model, less on a small one. The picture never leaves your network.
 
+### Backup to Google Drive
+
+Every night at 03:00 (or at the next start, when the machine was off) the server makes a consistent copy of
+the database (`VACUUM INTO`) and puts it, with every attachment, in one `payandplan-<date>.tar.gz` inside the
+**PayAndPlan Backup** folder of the owner's Google Drive. The last 30 copies stay, older ones are deleted.
+The archive is not encrypted on purpose: a key kept on this machine would die with it. On Drive the app has
+only the `drive.file` scope, so it sees only the files it creates and nobody else sees them.
+
+Setup (done once, on the server machine):
+
+1. In the Google Cloud console create an **OAuth client ID** of type **Desktop app** (here: "Pay & Plan
+   backup" in the project `leggimi-509009`, shared with LeggiMi) and download its JSON as
+   `DATA_DIR/gdrive-client.json`. Never commit it.
+2. The OAuth consent screen must be **In production** (not Testing), or Google revokes the access every
+   7 days. With only `drive.file` no Google review is needed; it needs a home page and a privacy page
+   (`https://pay.achianes.net/` and [`/privacy.html`](webapp/privacy.html)) on an authorized domain.
+3. Restart the server, then open `http://127.0.0.1:<port>/api/backup/connect` **on the server machine**
+   and allow access. The refresh token is kept in `DATA_DIR/gdrive-token.json`, encrypted with a key
+   derived from the server secret. The first backup runs straight away.
+
+Routes, from the server machine only (refused through the tunnel): `GET /api/backup/status`,
+`POST /api/backup/run` (backup now), `GET /api/backup/connect` (connect again, e.g. after
+`invalid_grant`). The code is in `server/src/backup.js`.
+
+To restore: stop the server, extract the archive into `DATA_DIR` (it holds `payandplan.sqlite` and
+`files/`), start the server again.
+
 ### The web app
 
 Nothing to build. It is served by the server itself; on iPhone open it in Safari and use
@@ -202,7 +229,8 @@ Point it at your server in **Setup**, then join a calendar with its invite code.
 ## Privacy
 
 Your data lives on your own server: a SQLite file and a folder of attachments, both under `DATA_DIR`.
-Nothing is sent anywhere else. The link reader refuses to fetch addresses inside the local network, so it
+Nothing is sent anywhere else, except the nightly backup to your own Google Drive when you connect it
+(see [Backup to Google Drive](#backup-to-google-drive)). The link reader refuses to fetch addresses inside the local network, so it
 cannot be used to poke at your home devices from outside.
 
 ---
