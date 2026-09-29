@@ -13,6 +13,7 @@ import { readReceipt } from './receipt.js'
 import { lookupProduct, productImage } from './products.js'
 import { searchPlaces, resolveEventLink } from './places.js'
 import * as push from './push.js'
+import { mountBackup, startBackupRounds } from './backup.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = config.port
@@ -691,6 +692,10 @@ app.delete('/api/attachments/:id', auth, (req, res) => {
   res.json({ ok: true })
 })
 
+// ---------------------------------------------------------------- nightly backup to Google Drive
+
+mountBackup(app)
+
 // ---------------------------------------------------------------- web app
 
 const webappDir = path.resolve(__dirname, '..', '..', 'webapp')
@@ -751,6 +756,7 @@ app.use((err, _req, res, _next) => {
 })
 
 push.startRounds()
+startBackupRounds()
 
 app.listen(PORT, () => {
   console.log(`Pay & Plan server listening on http://0.0.0.0:${PORT}`)

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy – Pay &amp; Plan, LeggiMi</title>
+<style>
+  :root { --bg: #fffdf8; --fg: #1d1b18; --muted: #5f5a52; --line: #e7e1d6; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17161a; --fg: #eeeae3; --muted: #a8a298; --line: #33302b; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 6px; }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); font-size: .9rem; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Informativa sulla privacy</h1>
+  <p class="muted">Pay &amp; Plan e LeggiMi · ultimo aggiornamento: 29 settembre 2026</p>
+
+  <p>Pay &amp; Plan (calendario di pagamenti e liste per la famiglia) e LeggiMi (lettore di documenti ad alta voce per Android) sono app private, usate da una sola famiglia. Non ci sono pubblicità, profilazione o vendita di dati.</p>
+
+  <h2>Accesso a Google Drive</h2>
+  <p>Entrambe le app chiedono a Google solo il permesso <strong>drive.file</strong>: possono vedere e modificare <strong>soltanto i file che creano loro</strong>, non il resto del tuo Drive.</p>
+  <ul>
+    <li><strong>LeggiMi</strong> salva nella cartella <em>LeggiMi</em> i documenti che scegli di caricare e un piccolo file con la posizione di lettura.</li>
+    <li><strong>Pay &amp; Plan</strong> salva ogni notte una copia di sicurezza dei propri dati (calendari, pagamenti, allegati) nella cartella <em>PayAndPlan Backup</em>. Vengono tenute le ultime 30 copie.</li>
+  </ul>
+  <p>I token di accesso restano cifrati sul telefono (LeggiMi) o sul server della famiglia (Pay &amp; Plan) e servono solo per parlare con Google Drive. Puoi revocare l'accesso in qualsiasi momento da <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+  <h2>Dati conservati</h2>
+  <p>Pay &amp; Plan conserva sul proprio server gli account (email, nome, password cifrata con bcrypt) e ciò che la famiglia inserisce. LeggiMi tiene i documenti sul telefono. Nessun dato viene condiviso con terzi, oltre a Google Drive quando lo colleghi tu.</p>
+
+  <h2>Cancellazione</h2>
+  <p>Per cancellare il tuo account o i tuoi dati, oppure per qualsiasi domanda: <a href="mailto:achianes@gmail.com">achianes@gmail.com</a>. Le copie su Google Drive si cancellano direttamente dalla cartella <em>PayAndPlan Backup</em>.</p>
+
+  <hr>
+  <p class="muted"><a href="/">Torna a Pay &amp; Plan</a></p>
+</main>
+</body>
+</html>
