@@ -247,6 +247,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearNotificationSamples() = viewModelScope.launch { repo.clearNotificationSamples() }
 
+    fun rereadSamples(onDone: (Int) -> Unit) = viewModelScope.launch { onDone(repo.rereadSamples()) }
+
     fun candidatesFor(
         movement: com.payandplan.app.data.BankMovement,
         onResult: (List<com.payandplan.app.data.MovementMatch>) -> Unit

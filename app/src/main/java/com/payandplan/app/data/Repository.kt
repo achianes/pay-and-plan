@@ -817,9 +817,22 @@ class Repository(
     fun observeRecentMovements(): Flow<List<BankMovement>> = bank.observeRecent()
     fun observeNotificationSamples(): Flow<List<NotificationSample>> = bank.observeSamples()
 
-    suspend fun saveBankRule(rule: BankRule) = bank.upsertRule(
-        rule.copy(createdAt = if (rule.createdAt == 0L) System.currentTimeMillis() else rule.createdAt)
-    )
+    suspend fun saveBankRule(rule: BankRule) {
+        val stored = rule.copy(
+            createdAt = if (rule.createdAt == 0L) System.currentTimeMillis() else rule.createdAt
+        )
+        bank.upsertRule(stored)
+        if (!stored.enabled) return
+
+        // the notification it was taught from is already here: read it now, not next time
+        bank.samplesFor(stored.packageName)
+            .filter {
+                MoneyText.contains(it.title, stored.phrase) || MoneyText.contains(it.text, stored.phrase)
+            }
+            .forEach { sample ->
+                recordMovement(stored, sample.packageName, sample.appLabel, sample.title, sample.text, sample.seenAt)
+            }
+    }
 
     suspend fun deleteBankRule(id: String) = bank.deleteRule(id)
 
@@ -849,21 +862,54 @@ class Repository(
             it.packageName == packageName &&
                 (MoneyText.contains(title, it.phrase) || MoneyText.contains(text, it.phrase))
         } ?: return
-        val amount = MoneyText.amountCents("$title $text") ?: return
+        recordMovement(rule, packageName, appLabel, title, text, postedAt)
+    }
+
+    /**
+     * Goes over the notifications already on the phone with every rule there is. For the
+     * rules written before this existed, and for a wording taught after the fact.
+     */
+    suspend fun rereadSamples(): Int {
+        var made = 0
+        for (rule in bank.enabledRules()) {
+            bank.samplesFor(rule.packageName)
+                .filter {
+                    MoneyText.contains(it.title, rule.phrase) || MoneyText.contains(it.text, rule.phrase)
+                }
+                .forEach { sample ->
+                    if (recordMovement(rule, sample.packageName, sample.appLabel, sample.title, sample.text, sample.seenAt)) {
+                        made++
+                    }
+                }
+        }
+        return made
+    }
+
+    /** One recognised line becomes one movement, and ticks an entry off when it is sure. */
+    private suspend fun recordMovement(
+        rule: BankRule,
+        packageName: String,
+        appLabel: String,
+        title: String,
+        text: String,
+        happenedAt: Long
+    ): Boolean {
+        val amount = MoneyText.amountCents("$title $text") ?: return false
 
         // banks repeat themselves: the same line twice in a few hours is one movement
-        if (bank.seenAlready(packageName, amount, text, postedAt - 6 * 60 * 60 * 1000L) > 0) return
+        if (bank.seenAlready(packageName, amount, text, happenedAt - 6 * 60 * 60 * 1000L) > 0) return false
 
         val movement = BankMovement(
             packageName = packageName, appLabel = appLabel, title = title, text = text,
-            amountCents = amount, kind = rule.kind, happenedAt = postedAt
+            amountCents = amount, kind = rule.kind, happenedAt = happenedAt
         )
         bank.upsertMovement(movement)
-        bank.forgetOlderThan(postedAt - 90L * 24 * 60 * 60 * 1000)
+        bank.forgetOlderThan(happenedAt - 90L * 24 * 60 * 60 * 1000)
 
         // figure and wording both agree with something that was waiting: tick it off
         val best = candidatesFor(movement).firstOrNull()
         if (best != null && best.sure) confirmMovement(movement.id, best.payment.id, auto = true)
+        return true
     }
 
     /** What this movement could be paying off, best first. */

@@ -156,6 +156,17 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("🔔 WHAT CAME IN", style = MaterialTheme.typography.headlineSmall, color = Ink, modifier = Modifier.weight(1f))
                 if (samples.isNotEmpty()) {
+                    // a rule written before these arrived still has to meet them
+                    ComicButton("READ AGAIN", {
+                        vm.rereadSamples { made ->
+                            android.widget.Toast.makeText(
+                                context,
+                                if (made > 0) "$made movement(s) found" else "Nothing new to take from these",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }, color = Mint, compact = true)
+                    Box(Modifier.size(8.dp))
                     ComicButton("CLEAR", { vm.clearNotificationSamples() }, color = Paper, compact = true)
                 }
             }
@@ -225,7 +236,12 @@ private fun RuleDialog(
     // the first words of the line usually are the wording the bank repeats every time
     val suggestion = remember(sample.id) {
         val source = sample.title.ifBlank { sample.text }
-        source.split(Regex("[.:·|\\n]")).firstOrNull()?.trim()?.take(40).orEmpty()
+        // the wording is what repeats; emoji and decorations change and would never match
+        source.split(Regex("""[.:·|\n]""")).firstOrNull().orEmpty()
+            .replace(Regex("""[^\p{L}\p{N} '&-]"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .take(40)
     }
     var phrase by remember(sample.id) { mutableStateOf(suggestion) }
     var kind by remember(sample.id) { mutableStateOf(MoneyKind.OUT) }

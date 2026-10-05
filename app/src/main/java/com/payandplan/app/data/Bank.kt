@@ -123,6 +123,13 @@ interface BankDao {
     @Query("SELECT * FROM notification_samples ORDER BY seenAt DESC LIMIT 60")
     fun observeSamples(): Flow<List<NotificationSample>>
 
+    /** What this app has said lately: a new rule is tried on these at once. */
+    @Query(
+        """SELECT * FROM notification_samples WHERE packageName = :packageName
+           ORDER BY seenAt DESC LIMIT 20"""
+    )
+    suspend fun samplesFor(packageName: String): List<NotificationSample>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSample(sample: NotificationSample)
 
