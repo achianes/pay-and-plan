@@ -48,6 +48,19 @@ class MoneyTextTest {
     }
 
     @Test
+    fun `picks the shop out of what the bank shouts`() {
+        val bbva = "Il pagamento di 45,00 EUR in data CENTRO SPORTIVO SANT ANNA " +
+            "effettuato con la tua carta e stato accettato"
+        assertEquals("Centro Sportivo Sant Anna", MoneyText.merchant(bbva))
+        assertEquals(
+            "Supermercati A Casa Mia",
+            MoneyText.merchant("Il pagamento di 47,58 EUR in data SUPERMERCATI A CASA MIA accettato")
+        )
+        // nothing shouted: the caller keeps whatever title it had
+        assertNull(MoneyText.merchant("Il pagamento e stato accettato"))
+    }
+
+    @Test
     fun `tells a bill from another one`() {
         val said = "Pagamento di 78,40 EUR a ENEL ENERGIA SPA accettato"
         assertTrue(MoneyText.similarity("Enel", said) >= 0.34)

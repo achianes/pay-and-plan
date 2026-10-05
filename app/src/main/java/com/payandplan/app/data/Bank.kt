@@ -101,6 +101,9 @@ interface BankDao {
     @Query("SELECT * FROM bank_movements ORDER BY happenedAt DESC LIMIT 60")
     fun observeRecent(): Flow<List<BankMovement>>
 
+    @Query("SELECT * FROM bank_movements WHERE status = 'PENDING' ORDER BY happenedAt")
+    suspend fun stillWaiting(): List<BankMovement>
+
     @Query("SELECT * FROM bank_movements WHERE id = :id")
     suspend fun movement(id: String): BankMovement?
 

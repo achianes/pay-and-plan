@@ -247,7 +247,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearNotificationSamples() = viewModelScope.launch { repo.clearNotificationSamples() }
 
-    fun rereadSamples(onDone: (Int) -> Unit) = viewModelScope.launch { onDone(repo.rereadSamples()) }
+    /**
+     * Everything still open in the notification shade, then the ones already written down.
+     * The first catches what arrived before the rule existed and was never dismissed.
+     */
+    fun rereadSamples(onDone: (Int) -> Unit) = viewModelScope.launch {
+        val fromShade = com.payandplan.app.notify.MoneyNotificationListener.rescanActive() ?: 0
+        val fromSamples = repo.rereadSamples()
+        repo.fileWaitingMovements()
+        onDone(fromShade + fromSamples)
+    }
 
     fun autoAddExpenses(): Boolean = prefs.autoAddExpenses
     fun setAutoAddExpenses(on: Boolean) { prefs.autoAddExpenses = on }

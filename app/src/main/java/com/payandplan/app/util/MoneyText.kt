@@ -93,6 +93,30 @@ object MoneyText {
         return shared.toDouble() / minOf(left.size, right.size)
     }
 
+    /**
+     * The shop a bank line is about. Tills and banks shout the merchant in capitals, in the
+     * middle of a sentence nobody wants as the name of an entry: "Il pagamento di 45,00 EUR
+     * in data CENTRO SPORTIVO SANT ANNA effettuato con la tua carta" is really about the
+     * centro sportivo. Null when nothing stands out.
+     */
+    fun merchant(vararg lines: String?): String? {
+        // a run of shouted words, short ones included: "SUPERMERCATI A CASA MIA" is one name
+        val shouted = Regex("""[\p{Lu}\p{N}][\p{Lu}\p{N}'&.-]*(?:\s+[\p{Lu}\p{N}][\p{Lu}\p{N}'&.-]*)+""")
+        // the sentence shouts these too, and they are not the shop
+        val noise = setOf("EUR", "IBAN", "POS", "SPA", "SRL", "SNC", "SAS", "ATM", "PIN")
+
+        val best = lines.filterNotNull()
+            .flatMap { line -> shouted.findAll(line).map { it.value.trim() } }
+            .map { run -> run.split(Regex("""\s+""")).filter { it.uppercase() !in noise } }
+            .filter { words -> words.any { it.length >= 3 } && words.sumOf { it.length } >= 6 }
+            .maxByOrNull { words -> words.sumOf { it.length } }
+            ?: return null
+
+        return best.joinToString(" ") { word ->
+            word.lowercase().replaceFirstChar { it.uppercase() }
+        }
+    }
+
     /** What to call the movement in a list: the shortest line that says something. */
     fun describe(title: String?, text: String?): String {
         val t = title.orEmpty().trim()

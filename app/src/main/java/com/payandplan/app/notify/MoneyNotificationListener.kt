@@ -25,28 +25,57 @@ class MoneyNotificationListener : NotificationListenerService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val packageName = sbn.packageName ?: return
-        if (packageName == packageName()) return            // our own alarms are not bank news
-        if (sbn.isOngoing) return                           // players, downloads, navigation
-
-        val extras = sbn.notification?.extras ?: return
-        if (extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) return
-
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-        val big = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
-        val text = big.ifBlank { extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty() }
-        if (title.isBlank() && text.isBlank()) return
-
-        val label = appLabel(packageName)
-        val repo = PayPlanApp.repository(applicationContext)
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        alive = this
+        // the shade is usually already full when we are switched on: read what is in it
         scope.launch {
-            runCatching { repo.readNotification(packageName, label, title, text, sbn.postTime) }
+            runCatching { readActive() }
+                .onFailure { android.util.Log.w("PayPlan", "shade not read: ${it.message}") }
+            runCatching { PayPlanApp.repository(applicationContext).fileWaitingMovements() }
+                .onFailure { android.util.Log.w("PayPlan", "waiting movements not filed: ${it.message}") }
+        }
+    }
+
+    override fun onListenerDisconnected() {
+        alive = null
+        super.onListenerDisconnected()
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        scope.launch {
+            runCatching { read(sbn) }
                 .onFailure { android.util.Log.w("PayPlan", "notification not read: ${it.message}") }
         }
     }
 
-    private fun packageName(): String = applicationContext.packageName
+    /** Everything still sitting in the shade, including what arrived before a rule existed. */
+    private suspend fun readActive(): Int {
+        val open = runCatching { activeNotifications }.getOrNull() ?: return 0
+        var made = 0
+        for (sbn in open) {
+            if (runCatching { read(sbn) }.getOrDefault(false)) made++
+        }
+        return made
+    }
+
+    /** One notification, as the rules see it. True when it became a movement. */
+    private suspend fun read(sbn: StatusBarNotification): Boolean {
+        val packageName = sbn.packageName ?: return false
+        if (packageName == applicationContext.packageName) return false   // our own alarms
+        if (sbn.isOngoing) return false                                   // players, downloads
+
+        val extras = sbn.notification?.extras ?: return false
+        if (extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) return false
+
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val big = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString().orEmpty()
+        val text = big.ifBlank { extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty() }
+        if (title.isBlank() && text.isBlank()) return false
+
+        return PayPlanApp.repository(applicationContext)
+            .readNotification(packageName, appLabel(packageName), title, text, sbn.postTime)
+    }
 
     private fun appLabel(packageName: String): String = runCatching {
         val pm = applicationContext.packageManager
@@ -54,6 +83,16 @@ class MoneyNotificationListener : NotificationListenerService() {
     }.getOrDefault(packageName)
 
     companion object {
+
+        /** The running service, when the system has one bound. */
+        @Volatile private var alive: MoneyNotificationListener? = null
+
+        /**
+         * Reads the notifications still open in the shade right now. Returns how many became
+         * movements, or null when nobody is listening (the permission is off, or the system
+         * has not bound the service yet).
+         */
+        suspend fun rescanActive(): Int? = alive?.readActive()
 
         /** Whether the owner has given this app the right to read notifications. */
         fun isAllowed(context: Context): Boolean {
@@ -65,6 +104,11 @@ class MoneyNotificationListener : NotificationListenerService() {
                 val parsed = ComponentName.unflattenFromString(it)
                 parsed != null && parsed.packageName == me.packageName
             }
+        }
+
+        /** Asks the system to bind us again, for when the service was killed. */
+        fun wakeUp(context: Context) = runCatching {
+            requestRebind(ComponentName(context, MoneyNotificationListener::class.java))
         }
 
         /** The system screen where that right is given or taken back. */

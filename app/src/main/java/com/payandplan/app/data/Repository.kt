@@ -849,7 +849,7 @@ class Repository(
         title: String,
         text: String,
         postedAt: Long
-    ) {
+    ): Boolean {
         bank.upsertSample(
             NotificationSample(
                 packageName = packageName, appLabel = appLabel,
@@ -861,8 +861,8 @@ class Repository(
         val rule = bank.enabledRules().firstOrNull {
             it.packageName == packageName &&
                 (MoneyText.contains(title, it.phrase) || MoneyText.contains(text, it.phrase))
-        } ?: return
-        recordMovement(rule, packageName, appLabel, title, text, postedAt)
+        } ?: return false
+        return recordMovement(rule, packageName, appLabel, title, text, postedAt)
     }
 
     /**
@@ -919,6 +919,26 @@ class Repository(
     }
 
     /**
+     * The movements still waiting, put where they belong. Anything that goes wrong is said
+     * out loud: a silence here is how a payment disappears without anybody noticing.
+     */
+    suspend fun fileWaitingMovements(): Int {
+        if (!prefs.autoAddExpenses) return 0
+        var filed = 0
+        for (movement in bank.stillWaiting()) {
+            runCatching { fileIntoTheDay(movement) }
+                .onSuccess { filed++ }
+                .onFailure {
+                    android.util.Log.w(
+                        "PayPlan",
+                        "could not file ${movement.amountCents} cents: ${it.javaClass.simpleName}: ${it.message}"
+                    )
+                }
+        }
+        return filed
+    }
+
+    /**
      * An expense nobody expected goes into the day it happened. A big one gets an entry of
      * its own; the small change of a day, a coffee here and a bus ticket there, would bury
      * the calendar, so it all joins one entry that grows as the day goes on.
@@ -937,8 +957,8 @@ class Repository(
             .atZone(java.time.ZoneId.systemDefault())
         val day = moment.toLocalDate()
         val line = "${Format.time(moment.hour * 60 + moment.minute)} · " +
-            "${movement.title.ifBlank { movement.appLabel }} · " +
-            Format.money(movement.amountCents, currency())
+            (MoneyText.merchant(movement.text, movement.title) ?: movement.title.ifBlank { movement.appLabel }) +
+            " · " + Format.money(movement.amountCents, currency())
 
         val already = payments.onDayTitled(_calendarId.value, day.toEpochDay(), SMALL_EXPENSES)
         val me = prefs.userId.ifBlank { null }
@@ -1043,7 +1063,9 @@ class Repository(
             seriesId = newId(),
             ownerUserId = me,
             createdByUserId = me,
-            title = movement.title.ifBlank { movement.appLabel },
+            // the shop, not the bank's greeting: "Centro Sportivo" beats "Pagamento accettato"
+            title = MoneyText.merchant(movement.text, movement.title)
+                ?: movement.title.ifBlank { movement.appLabel },
             amountCents = movement.amountCents,
             currency = currency(),
             category = movement.appLabel,
