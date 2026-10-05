@@ -908,8 +908,83 @@ class Repository(
 
         // figure and wording both agree with something that was waiting: tick it off
         val best = candidatesFor(movement).firstOrNull()
-        if (best != null && best.sure) confirmMovement(movement.id, best.payment.id, auto = true)
+        if (best != null && best.sure) {
+            confirmMovement(movement.id, best.payment.id, auto = true)
+            return true
+        }
+
+        // nothing was waiting for it: write it into its day rather than leave it hanging
+        if (prefs.autoAddExpenses) fileIntoTheDay(movement)
         return true
+    }
+
+    /**
+     * An expense nobody expected goes into the day it happened. A big one gets an entry of
+     * its own; the small change of a day, a coffee here and a bus ticket there, would bury
+     * the calendar, so it all joins one entry that grows as the day goes on.
+     */
+    private suspend fun fileIntoTheDay(movement: BankMovement) {
+        // money arriving is never guessed at: it waits to be confirmed by hand
+        if (movement.isIncome) return
+
+        if (movement.amountCents > prefs.smallExpenseCents) {
+            entryFromMovement(movement.id)
+            return
+        }
+
+        val stamp = System.currentTimeMillis()
+        val moment = java.time.Instant.ofEpochMilli(movement.happenedAt)
+            .atZone(java.time.ZoneId.systemDefault())
+        val day = moment.toLocalDate()
+        val line = "${Format.time(moment.hour * 60 + moment.minute)} · " +
+            "${movement.title.ifBlank { movement.appLabel }} · " +
+            Format.money(movement.amountCents, currency())
+
+        val already = payments.onDayTitled(_calendarId.value, day.toEpochDay(), SMALL_EXPENSES)
+        val me = prefs.userId.ifBlank { null }
+        val entry = if (already != null) {
+            already.copy(
+                amountCents = already.amountCents + movement.amountCents,
+                paidAmountCents = (already.paidAmountCents ?: 0L) + movement.amountCents,
+                notes = (already.notes + "\n" + line).trim(),
+                updatedAt = stamp,
+                pendingSync = true
+            )
+        } else {
+            Payment(
+                calendarId = _calendarId.value,
+                seriesId = newId(),
+                ownerUserId = me,
+                createdByUserId = me,
+                title = SMALL_EXPENSES,
+                amountCents = movement.amountCents,
+                currency = currency(),
+                category = "Bank",
+                notes = line,
+                dueDate = day.toEpochDay(),
+                dueTimeMinutes = 12 * 60,
+                kind = EntryKind.BILL.name,
+                status = PayStatus.PAID.name,
+                paidAt = movement.happenedAt,
+                paidAmountCents = movement.amountCents,
+                paidByUserId = me,
+                alarmEnabled = false,
+                requireReceipt = false,
+                createdAt = stamp,
+                updatedAt = stamp,
+                pendingSync = true
+            )
+        }
+        if (already != null) payments.update(entry) else payments.insert(entry)
+
+        bank.upsertMovement(
+            movement.copy(
+                status = MovementStatus.MATCHED,
+                matchedPaymentId = entry.id,
+                matchedAt = stamp
+            )
+        )
+        syncQuietly()
     }
 
     /** What this movement could be paying off, best first. */
@@ -1255,3 +1330,6 @@ data class MovementMatch(
     /** figure to the cent and words in common: safe to tick off alone */
     val sure: Boolean
 )
+
+/** The one entry that holds a day's small change. */
+const val SMALL_EXPENSES = "Small expenses"

@@ -37,6 +37,14 @@ interface PaymentDao {
     @Query("SELECT * FROM payments WHERE id = :id")
     suspend fun getById(id: String): Payment?
 
+    /** The one entry of a day that carries a given title, if it is already there. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND dueDate = :day AND title = :title
+             AND deletedAt IS NULL LIMIT 1"""
+    )
+    suspend fun onDayTitled(calendarId: String, day: Long, title: String): Payment?
+
     /** Still open around a given day: what a bank notification might be paying off. */
     @Query(
         """SELECT * FROM payments

@@ -1,5 +1,7 @@
 package com.payandplan.app.ui.screens
 
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -116,6 +118,50 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
                     color = Paper,
                     compact = true
                 )
+            }
+        }
+
+        item {
+            var auto by remember { mutableStateOf(vm.autoAddExpenses()) }
+            var threshold by remember { mutableStateOf(Format.centsToInput(vm.smallExpenseCents())) }
+            ComicCard(color = Yellow, modifier = Modifier.fillMaxWidth()) {
+                Text("🧾 THE DAY'S EXPENSES", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                Text(
+                    "An expense the calendar did not expect is written into the day it happened. " +
+                        "A day's small change would bury the month, so anything under the figure below " +
+                        "joins one entry a day instead of getting its own.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
+                Box(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ComicChip("Write them in", auto, {
+                        auto = true
+                        vm.setAutoAddExpenses(true)
+                    }, color = Mint)
+                    ComicChip("Leave them to me", !auto, {
+                        auto = false
+                        vm.setAutoAddExpenses(false)
+                    }, color = Paper)
+                }
+                if (auto) {
+                    Box(Modifier.height(10.dp))
+                    ComicField(
+                        threshold,
+                        { typed ->
+                            threshold = typed
+                            Format.parseAmountToCents(typed)?.let { vm.setSmallExpenseCents(it) }
+                        },
+                        "Together below (EUR)",
+                        Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                    Text(
+                        "Money coming in is never written in by itself: it waits for you below.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Ink
+                    )
+                }
             }
         }
 

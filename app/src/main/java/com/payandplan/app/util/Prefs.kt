@@ -70,6 +70,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("list_mosaic", false)
         set(v) = sp.edit().putBoolean("list_mosaic", v).apply()
 
+    /** Write an expense the calendar did not expect straight into its day. */
+    var autoAddExpenses: Boolean
+        get() = sp.getBoolean("auto_add_expenses", true)
+        set(v) = sp.edit().putBoolean("auto_add_expenses", v).apply()
+
+    /** Under this, an expense joins the day's single "small expenses" entry instead of its own. */
+    var smallExpenseCents: Long
+        get() = sp.getLong("small_expense_cents", 1000L)
+        set(v) = sp.edit().putLong("small_expense_cents", v).apply()
+
     var schemaVersion: Int
         get() = sp.getInt("schema_version", 0)
         set(v) = sp.edit().putInt("schema_version", v).apply()

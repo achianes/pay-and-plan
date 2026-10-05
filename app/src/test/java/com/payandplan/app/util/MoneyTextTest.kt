@@ -39,6 +39,15 @@ class MoneyTextTest {
     }
 
     @Test
+    fun `does not care about the pictures a bank adds to its own wording`() {
+        // the rule was taught from a notification carrying emoji; the next one may not
+        assertTrue(MoneyText.contains("Pagamento accettato 👍💳", "Pagamento accettato"))
+        assertTrue(MoneyText.contains("Pagamento accettato!", "Pagamento accettato 👍💳"))
+        assertTrue(MoneyText.contains("💳 Pagamento accettato ✅", "pagamento accettato"))
+        assertTrue(!MoneyText.contains("Bonifico ricevuto 👍", "Pagamento accettato 👍"))
+    }
+
+    @Test
     fun `tells a bill from another one`() {
         val said = "Pagamento di 78,40 EUR a ENEL ENERGIA SPA accettato"
         assertTrue(MoneyText.similarity("Enel", said) >= 0.34)

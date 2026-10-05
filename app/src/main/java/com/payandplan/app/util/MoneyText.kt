@@ -16,9 +16,19 @@ object MoneyText {
             .replace(Regex("""\s+"""), " ")
             .trim()
 
+    /**
+     * Letters, digits and single spaces only. A bank writes "Pagamento accettato" today and
+     * "Pagamento accettato 👍💳" tomorrow: the words are the rule, the decorations are not.
+     */
+    fun bare(text: String?): String =
+        plain(text)
+            .replace(Regex("""[^\p{L}\p{N} ]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
     fun contains(haystack: String?, needle: String?): Boolean {
-        val n = plain(needle)
-        return n.isNotBlank() && plain(haystack).contains(n)
+        val n = bare(needle)
+        return n.isNotBlank() && bare(haystack).contains(n)
     }
 
     // 1.234,56 the Italian way, 1,234.56 the English one, 12.34 or 12,34 plain. Whichever

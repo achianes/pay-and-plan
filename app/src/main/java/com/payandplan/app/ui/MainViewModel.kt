@@ -249,6 +249,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun rereadSamples(onDone: (Int) -> Unit) = viewModelScope.launch { onDone(repo.rereadSamples()) }
 
+    fun autoAddExpenses(): Boolean = prefs.autoAddExpenses
+    fun setAutoAddExpenses(on: Boolean) { prefs.autoAddExpenses = on }
+    fun smallExpenseCents(): Long = prefs.smallExpenseCents
+    fun setSmallExpenseCents(cents: Long) { prefs.smallExpenseCents = cents }
+
     fun candidatesFor(
         movement: com.payandplan.app.data.BankMovement,
         onResult: (List<com.payandplan.app.data.MovementMatch>) -> Unit
