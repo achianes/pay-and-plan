@@ -57,6 +57,7 @@ import com.payandplan.app.util.CalendarEvent
 import com.payandplan.app.util.GoogleCalendarShare
 import com.payandplan.app.util.IcsParser
 import com.payandplan.app.ui.components.ComicIconButton
+import com.payandplan.app.ui.screens.BankScreen
 import com.payandplan.app.ui.screens.CalendarScreen
 import com.payandplan.app.ui.screens.DayScreen
 import com.payandplan.app.ui.screens.EditPaymentScreen
@@ -351,7 +352,15 @@ private fun Root(
                 }
 
                 composable(Tab.Settings.route) {
-                    SettingsScreen(vm) { nav.navigate(Tab.Calendar.route) { popUpTo(0) } }
+                    SettingsScreen(
+                        vm = vm,
+                        onOpenBank = { nav.navigate("bank") },
+                        onSignedOut = { nav.navigate(Tab.Calendar.route) { popUpTo(0) } }
+                    )
+                }
+
+                composable("bank") {
+                    BankScreen(vm = vm, onBack = { nav.popBackStack() })
                 }
 
                 composable(

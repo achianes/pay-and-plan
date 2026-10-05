@@ -227,6 +227,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun currentCalendar() = repo.currentCalendar()
     fun myUserId() = repo.myUserId
 
+    // ---- what the bank says ----
+
+    val bankRules: StateFlow<List<com.payandplan.app.data.BankRule>> = repo.observeBankRules()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val pendingMovements: StateFlow<List<com.payandplan.app.data.BankMovement>> =
+        repo.observePendingMovements()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val notificationSamples: StateFlow<List<com.payandplan.app.data.NotificationSample>> =
+        repo.observeNotificationSamples()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun saveBankRule(rule: com.payandplan.app.data.BankRule) =
+        viewModelScope.launch { repo.saveBankRule(rule) }
+
+    fun deleteBankRule(id: String) = viewModelScope.launch { repo.deleteBankRule(id) }
+
+    fun clearNotificationSamples() = viewModelScope.launch { repo.clearNotificationSamples() }
+
+    fun candidatesFor(
+        movement: com.payandplan.app.data.BankMovement,
+        onResult: (List<com.payandplan.app.data.MovementMatch>) -> Unit
+    ) = viewModelScope.launch { onResult(repo.candidatesFor(movement)) }
+
+    fun confirmMovement(movementId: String, paymentId: String) =
+        viewModelScope.launch { repo.confirmMovement(movementId, paymentId) }
+
+    fun entryFromMovement(movementId: String, onDone: (String?) -> Unit = {}) =
+        viewModelScope.launch { onDone(repo.entryFromMovement(movementId)) }
+
+    fun ignoreMovement(movementId: String) = viewModelScope.launch { repo.ignoreMovement(movementId) }
+
     // ---- navigation state ----
 
     fun stepMonth(delta: Long) { _month.value = _month.value.plusMonths(delta) }

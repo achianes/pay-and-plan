@@ -9,6 +9,7 @@ import com.payandplan.app.net.Place
 import com.payandplan.app.util.CalendarEvent
 import com.payandplan.app.util.FileStore
 import com.payandplan.app.util.Format
+import com.payandplan.app.util.MoneyText
 import com.payandplan.app.util.Prefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -38,6 +39,7 @@ class Repository(
     private val notes = db.dayNoteDao()
     private val shopping = db.shoppingDao()
     private val noteDao = db.noteDao()
+    private val bank = db.bankDao()
 
     private val _calendarId = MutableStateFlow(prefs.calendarId)
     val calendarId = _calendarId.asStateFlow()
@@ -808,6 +810,153 @@ class Repository(
 
     fun calendarIdNow(): String = _calendarId.value
 
+    // ---------------------------------------------------------------- what the bank says
+
+    fun observeBankRules(): Flow<List<BankRule>> = bank.observeRules()
+    fun observePendingMovements(): Flow<List<BankMovement>> = bank.observePending()
+    fun observeRecentMovements(): Flow<List<BankMovement>> = bank.observeRecent()
+    fun observeNotificationSamples(): Flow<List<NotificationSample>> = bank.observeSamples()
+
+    suspend fun saveBankRule(rule: BankRule) = bank.upsertRule(
+        rule.copy(createdAt = if (rule.createdAt == 0L) System.currentTimeMillis() else rule.createdAt)
+    )
+
+    suspend fun deleteBankRule(id: String) = bank.deleteRule(id)
+
+    suspend fun clearNotificationSamples() = bank.clearSamples()
+
+    /**
+     * Every notification worth a look passes here. It is remembered for a moment so a rule
+     * can be taught from it, and it becomes a movement only when one of the owner's rules
+     * recognises the wording and there is a figure to read.
+     */
+    suspend fun readNotification(
+        packageName: String,
+        appLabel: String,
+        title: String,
+        text: String,
+        postedAt: Long
+    ) {
+        bank.upsertSample(
+            NotificationSample(
+                packageName = packageName, appLabel = appLabel,
+                title = title, text = text, seenAt = postedAt
+            )
+        )
+        bank.trimSamples()
+
+        val rule = bank.enabledRules().firstOrNull {
+            it.packageName == packageName &&
+                (MoneyText.contains(title, it.phrase) || MoneyText.contains(text, it.phrase))
+        } ?: return
+        val amount = MoneyText.amountCents("$title $text") ?: return
+
+        // banks repeat themselves: the same line twice in a few hours is one movement
+        if (bank.seenAlready(packageName, amount, text, postedAt - 6 * 60 * 60 * 1000L) > 0) return
+
+        val movement = BankMovement(
+            packageName = packageName, appLabel = appLabel, title = title, text = text,
+            amountCents = amount, kind = rule.kind, happenedAt = postedAt
+        )
+        bank.upsertMovement(movement)
+        bank.forgetOlderThan(postedAt - 90L * 24 * 60 * 60 * 1000)
+
+        // figure and wording both agree with something that was waiting: tick it off
+        val best = candidatesFor(movement).firstOrNull()
+        if (best != null && best.sure) confirmMovement(movement.id, best.payment.id, auto = true)
+    }
+
+    /** What this movement could be paying off, best first. */
+    suspend fun candidatesFor(movement: BankMovement): List<MovementMatch> {
+        val day = java.time.Instant.ofEpochMilli(movement.happenedAt)
+            .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        val rows = payments.openBetween(
+            _calendarId.value, day.minusDays(12).toEpochDay(), day.plusDays(12).toEpochDay()
+        )
+        val said = "${movement.title} ${movement.text}"
+
+        return rows.mapNotNull { payment ->
+            val wanted = if (movement.isIncome) payment.isIncome else payment.isBill
+            if (!wanted) return@mapNotNull null
+
+            val gap = kotlin.math.abs(payment.amountCents - movement.amountCents)
+            val exact = gap == 0L
+            val close = gap <= maxOf(50L, payment.amountCents / 100)
+            if (!exact && !close) return@mapNotNull null
+
+            val like = MoneyText.similarity("${payment.title} ${payment.category}", said)
+            val score = (if (exact) 0.6 else 0.35) + like * 0.4
+            MovementMatch(
+                payment = payment,
+                score = score,
+                like = like,
+                // the figure to the cent and words in common: no need to ask
+                sure = exact && like >= 0.34
+            )
+        }.sortedByDescending { it.score }
+    }
+
+    /** The movement was this entry: close the entry for the figure the bank said. */
+    suspend fun confirmMovement(movementId: String, paymentId: String, auto: Boolean = false) {
+        val movement = bank.movement(movementId) ?: return
+        markPaid(paymentId, movement.amountCents)
+        bank.upsertMovement(
+            movement.copy(
+                status = MovementStatus.MATCHED,
+                matchedPaymentId = paymentId,
+                matchedAt = System.currentTimeMillis(),
+                auto = auto
+            )
+        )
+    }
+
+    /** Nothing was waiting for it: the movement becomes an entry of its own, already closed. */
+    suspend fun entryFromMovement(movementId: String): String? {
+        val movement = bank.movement(movementId) ?: return null
+        val stamp = System.currentTimeMillis()
+        val day = java.time.Instant.ofEpochMilli(movement.happenedAt)
+            .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        val me = prefs.userId.ifBlank { null }
+        val entry = Payment(
+            calendarId = _calendarId.value,
+            seriesId = newId(),
+            ownerUserId = me,
+            createdByUserId = me,
+            title = movement.title.ifBlank { movement.appLabel },
+            amountCents = movement.amountCents,
+            currency = currency(),
+            category = movement.appLabel,
+            notes = movement.text,
+            dueDate = day.toEpochDay(),
+            dueTimeMinutes = 12 * 60,
+            kind = if (movement.isIncome) EntryKind.INCOME.name else EntryKind.BILL.name,
+            status = PayStatus.PAID.name,
+            paidAt = movement.happenedAt,
+            paidAmountCents = movement.amountCents,
+            paidByUserId = me,
+            alarmEnabled = false,
+            requireReceipt = false,
+            createdAt = stamp,
+            updatedAt = stamp,
+            pendingSync = true
+        )
+        payments.insert(entry)
+        bank.upsertMovement(
+            movement.copy(
+                status = MovementStatus.MATCHED,
+                matchedPaymentId = entry.id,
+                matchedAt = stamp
+            )
+        )
+        syncQuietly()
+        return entry.id
+    }
+
+    suspend fun ignoreMovement(movementId: String) {
+        val movement = bank.movement(movementId) ?: return
+        bank.upsertMovement(movement.copy(status = MovementStatus.IGNORED))
+    }
+
     fun switchCalendar(id: String) {
         prefs.calendarId = id
         _calendarId.value = id
@@ -1051,3 +1200,12 @@ class Repository(
 
 /** Alias so the repository does not depend on the network package types by name. */
 typealias SyncPullData = com.payandplan.app.net.SyncPull
+
+/** One way a movement could be read: which entry, how sure. */
+data class MovementMatch(
+    val payment: Payment,
+    val score: Double,
+    val like: Double,
+    /** figure to the cent and words in common: safe to tick off alone */
+    val sure: Boolean
+)

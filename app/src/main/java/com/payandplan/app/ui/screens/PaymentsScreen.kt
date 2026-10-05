@@ -58,6 +58,7 @@ fun PaymentsScreen(
     onOpenPayment: (String) -> Unit
 ) {
     val everything by vm.allPayments.collectAsState()
+    val movements by vm.pendingMovements.collectAsState()
     val currency = vm.currency()
     val today = LocalDate.now()
     var filter by remember { mutableStateOf(Filter.OPEN) }
@@ -129,6 +130,10 @@ fun PaymentsScreen(
                     }
                 }
             }
+        }
+
+        if (movements.isNotEmpty()) {
+            item { MovementsCard(vm, movements, currency) }
         }
 
         item {

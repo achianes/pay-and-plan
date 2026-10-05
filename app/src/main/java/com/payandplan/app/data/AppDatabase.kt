@@ -8,9 +8,10 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         Payment::class, Attachment::class, DayNote::class,
-        ShoppingList::class, ShoppingItem::class, Note::class
+        ShoppingList::class, ShoppingItem::class, Note::class,
+        BankRule::class, BankMovement::class, NotificationSample::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,10 +20,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dayNoteDao(): DayNoteDao
     abstract fun shoppingDao(): ShoppingDao
     abstract fun noteDao(): NoteDao
+    abstract fun bankDao(): BankDao
 
     companion object {
         /** Keep in step with the @Database version above. */
-        const val VERSION = 7
+        const val VERSION = 8
 
         @Volatile private var instance: AppDatabase? = null
 

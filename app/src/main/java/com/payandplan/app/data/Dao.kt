@@ -37,6 +37,14 @@ interface PaymentDao {
     @Query("SELECT * FROM payments WHERE id = :id")
     suspend fun getById(id: String): Payment?
 
+    /** Still open around a given day: what a bank notification might be paying off. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND deletedAt IS NULL AND status = 'PENDING'
+             AND dueDate BETWEEN :from AND :to"""
+    )
+    suspend fun openBetween(calendarId: String, from: Long, to: Long): List<Payment>
+
     @Query("SELECT * FROM payments WHERE deletedAt IS NULL AND status = 'PENDING' AND alarmEnabled = 1")
     suspend fun getOpenWithAlarm(): List<Payment>
 

@@ -24,6 +24,17 @@
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.PayAndPlan">
 
+        <!-- reads what the bank apps say, so a paid bill can tick itself off -->
+        <service
+            android:name=".notify.MoneyNotificationListener"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Android Auto -->
         <meta-data
             android:name="com.google.android.gms.car.application"

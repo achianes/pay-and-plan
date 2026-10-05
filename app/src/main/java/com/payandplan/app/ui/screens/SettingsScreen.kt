@@ -53,7 +53,7 @@ import com.payandplan.app.ui.theme.stickerColor
 import com.payandplan.app.util.Format
 
 @Composable
-fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
+fun SettingsScreen(vm: MainViewModel, onOpenBank: () -> Unit = {}, onSignedOut: () -> Unit) {
     val context = LocalContext.current
     val prefs = vm.prefs
     val calendars by vm.calendars.collectAsState()
@@ -337,6 +337,18 @@ fun SettingsScreen(vm: MainViewModel, onSignedOut: () -> Unit) {
 
                     ComicButton("Re-arm all alarms now", { vm.rearmAll() }, color = Yellow, compact = true)
                 }
+            }
+        }
+
+        item {
+            ComicCard(color = Grape, modifier = Modifier.fillMaxWidth(), onClick = onOpenBank) {
+                Text("🏦 THE BANK", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                Text(
+                    "Teach the phone what your bank's notifications mean, and a paid bill ticks " +
+                        "itself off. Nothing leaves the phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
             }
         }
 
