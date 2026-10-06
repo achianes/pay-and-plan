@@ -238,6 +238,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun forgetBankLink(id: String) = viewModelScope.launch { repo.deleteBankLink(id) }
 
+    fun unpackableGroups(onResult: (Int) -> Unit) =
+        viewModelScope.launch { onResult(repo.unpackableGroups()) }
+
+    fun unpackSmallGroups(onDone: (Int) -> Unit) =
+        viewModelScope.launch { onDone(repo.unpackSmallGroups()) }
+
     val pendingMovements: StateFlow<List<com.payandplan.app.data.BankMovement>> =
         repo.observePendingMovements()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

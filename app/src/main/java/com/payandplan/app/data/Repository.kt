@@ -1105,6 +1105,78 @@ class Repository(
 
     suspend fun deleteBankLink(id: String) = bank.deleteLink(id)
 
+    // ---------------------------------------------------------------- undoing the old lump
+
+    /**
+     * The small change used to be written as one entry a day with the shops listed in its
+     * notes, which is a sentence, not money anybody can add up. One line of it, read back.
+     */
+    private fun unpackLine(line: String): Triple<Int, String, Long>? {
+        val parts = line.split(" \u00b7 ")
+        if (parts.size < 3) return null
+        val clock = parts[0].trim().split(":")
+        val minutes = (clock.getOrNull(0)?.toIntOrNull() ?: return null) * 60 +
+            (clock.getOrNull(1)?.toIntOrNull() ?: return null)
+        val cents = MoneyText.amountCents(parts.last()) ?: return null
+        val shop = parts.subList(1, parts.size - 1).joinToString(" \u00b7 ").trim()
+        if (shop.isBlank()) return null
+        return Triple(minutes, shop, cents)
+    }
+
+    /** How many of those lumps can be taken apart without losing a cent. */
+    suspend fun unpackableGroups(): Int =
+        payments.titled(_calendarId.value, SMALL_EXPENSES).count { canUnpack(it) }
+
+    private fun canUnpack(entry: Payment): Boolean {
+        val lines = entry.notes.lines().mapNotNull { unpackLine(it) }
+        return lines.isNotEmpty() && lines.sumOf { it.third } == entry.amountCents
+    }
+
+    /**
+     * Takes the old lumps apart: one entry per line, each with its shop, its time and its
+     * own category to be given. Only the ones whose lines add up exactly to the total are
+     * touched; anything else is left alone rather than guessed at. Returns how many went.
+     */
+    suspend fun unpackSmallGroups(): Int {
+        var done = 0
+        val me = prefs.userId.ifBlank { null }
+        for (entry in payments.titled(_calendarId.value, SMALL_EXPENSES)) {
+            if (!canUnpack(entry)) continue
+            val stamp = System.currentTimeMillis()
+            for ((minutes, shop, cents) in entry.notes.lines().mapNotNull { unpackLine(it) }) {
+                payments.insert(
+                    Payment(
+                        calendarId = entry.calendarId,
+                        seriesId = newId(),
+                        ownerUserId = entry.ownerUserId ?: me,
+                        createdByUserId = entry.createdByUserId ?: me,
+                        title = shop,
+                        amountCents = cents,
+                        currency = entry.currency,
+                        category = categoryFor(shop),
+                        groupKey = SMALL_GROUP,
+                        dueDate = entry.dueDate,
+                        dueTimeMinutes = minutes,
+                        kind = EntryKind.BILL.name,
+                        status = PayStatus.PAID.name,
+                        paidAt = entry.paidAt ?: stamp,
+                        paidAmountCents = cents,
+                        paidByUserId = entry.paidByUserId ?: me,
+                        alarmEnabled = false,
+                        requireReceipt = false,
+                        createdAt = stamp,
+                        updatedAt = stamp,
+                        pendingSync = true
+                    )
+                )
+            }
+            payments.update(stamped(entry.copy(deletedAt = stamp)))
+            done++
+        }
+        if (done > 0) syncQuietly()
+        return done
+    }
+
     /** What this movement could be paying off, best first. */
     suspend fun candidatesFor(movement: BankMovement): List<MovementMatch> {
         val day = java.time.Instant.ofEpochMilli(movement.happenedAt)

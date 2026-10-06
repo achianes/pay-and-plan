@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +73,8 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
     val rules by vm.bankRules.collectAsState()
     var refining by remember { mutableStateOf<BankRule?>(null) }
     val links by vm.bankLinks.collectAsState()
+    var lumps by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { vm.unpackableGroups { lumps = it } }
     val samples by vm.notificationSamples.collectAsState()
     var allowed by remember { mutableStateOf(MoneyNotificationListener.isAllowed(context)) }
     var teaching by remember { mutableStateOf<NotificationSample?>(null) }
@@ -204,6 +207,37 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
                         Icons.Filled.Close, { vm.deleteBankRule(rule.id) },
                         color = Coral, size = 32.dp, contentDescription = "Remove the rule"
                     )
+                }
+            }
+        }
+
+        if (lumps > 0) {
+            item {
+                ComicCard(color = Yellow, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "📦 OLD LUMPS ($lumps)",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Ink
+                    )
+                    Text(
+                        "Days whose small change was written as one entry, with the shops only " +
+                            "named in the notes. Taking them apart gives each one its figure and " +
+                            "a category of its own. Only the days whose lines add up exactly are " +
+                            "touched.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink
+                    )
+                    Box(Modifier.height(10.dp))
+                    ComicButton("TAKE THEM APART", {
+                        vm.unpackSmallGroups { done ->
+                            lumps = 0
+                            android.widget.Toast.makeText(
+                                context,
+                                if (done > 0) "$done day(s) taken apart" else "Nothing could be taken apart",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }, color = Mint, compact = true)
                 }
             }
         }
