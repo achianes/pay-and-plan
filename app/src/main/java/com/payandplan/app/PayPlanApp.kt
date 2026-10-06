@@ -14,6 +14,8 @@ class PayPlanApp : Application() {
         super.onCreate()
         Notifications.ensureChannels(this)
         MaintenanceWorker.enqueue(this)
+        com.payandplan.app.notify.ShadeWatchdog.enqueue(this)
+        com.payandplan.app.notify.MoneyNotificationListener.wakeUp(this)
     }
 
     companion object {
