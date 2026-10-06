@@ -37,6 +37,13 @@ interface PaymentDao {
     @Query("SELECT * FROM payments WHERE id = :id")
     suspend fun getById(id: String): Payment?
 
+    /** Every entry of a calendar that carries a title, whatever day it is on. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND deletedAt IS NULL AND title = :title"""
+    )
+    suspend fun titled(calendarId: String, title: String): List<Payment>
+
     /** Everything already closed since a day: what a planned bill might have been paid as. */
     @Query(
         """SELECT * FROM payments

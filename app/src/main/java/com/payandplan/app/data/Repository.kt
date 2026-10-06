@@ -212,9 +212,14 @@ class Repository(
     }
 
     suspend fun updateOne(payment: Payment) {
+        val before = payments.getById(payment.id)
         payments.update(stamped(payment))
         AlarmScheduler.cancel(context, payment.id)
         AlarmScheduler.schedule(context, payment)
+        // a category written here means the same as one tapped on the day: the shop keeps it
+        if (payment.category.isNotBlank() && payment.category != before?.category) {
+            rememberCategory(payment.title, payment.category)
+        }
         syncQuietly()
     }
 
@@ -261,9 +266,35 @@ class Repository(
     /** What an entry was for. Free text: whatever is typed joins the list of the others. */
     suspend fun setCategory(id: String, category: String) {
         val entry = payments.getById(id) ?: return
-        payments.update(stamped(entry.copy(category = category.trim())))
+        val named = category.trim()
+        payments.update(stamped(entry.copy(category = named)))
+        if (named.isNotBlank()) rememberCategory(entry.title, named)
         syncQuietly()
     }
+
+    /**
+     * Said once, meant always: the shop keeps the category. The next payment read from the
+     * bank at the same shop arrives already sorted, and the ones already sitting there with
+     * no category are brought along, since the answer would have been the same for them.
+     */
+    private suspend fun rememberCategory(title: String, category: String) {
+        val shop = MoneyText.bare(title)
+        if (shop.isBlank()) return
+        val had = bank.linkFor(shop)
+        bank.upsertLink(
+            (had ?: BankLink(shop = shop, label = title, createdAt = System.currentTimeMillis()))
+                .copy(category = category)
+        )
+        for (other in payments.titled(_calendarId.value, title)) {
+            if (other.category.isBlank()) {
+                payments.update(stamped(other.copy(category = category)))
+            }
+        }
+    }
+
+    /** What this shop has been for before, if anybody ever said. */
+    private suspend fun categoryFor(title: String): String =
+        bank.linkFor(MoneyText.bare(title))?.category.orEmpty()
 
     suspend fun markPaid(id: String, paidCents: Long? = null) {
         val p = payments.getById(id) ?: return
@@ -985,7 +1016,7 @@ class Repository(
             title = shop,
             amountCents = movement.amountCents,
             currency = currency(),
-            category = "",
+            category = categoryFor(shop),
             groupKey = SMALL_GROUP,
             dueDate = day.toEpochDay(),
             dueTimeMinutes = moment.hour * 60 + moment.minute,
@@ -1125,17 +1156,18 @@ class Repository(
         val day = java.time.Instant.ofEpochMilli(movement.happenedAt)
             .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         val me = prefs.userId.ifBlank { null }
+        val shopName = MoneyText.merchant(movement.text, movement.title)
+            ?: movement.title.ifBlank { movement.appLabel }
         val entry = Payment(
             calendarId = _calendarId.value,
             seriesId = newId(),
             ownerUserId = me,
             createdByUserId = me,
             // the shop, not the bank's greeting: "Centro Sportivo" beats "Pagamento accettato"
-            title = MoneyText.merchant(movement.text, movement.title)
-                ?: movement.title.ifBlank { movement.appLabel },
+            title = shopName,
             amountCents = movement.amountCents,
             currency = currency(),
-            category = "",
+            category = categoryFor(shopName),
             notes = movement.text,
             dueDate = day.toEpochDay(),
             dueTimeMinutes = 12 * 60,

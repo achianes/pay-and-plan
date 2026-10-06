@@ -232,6 +232,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val bankRules: StateFlow<List<com.payandplan.app.data.BankRule>> = repo.observeBankRules()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** What the house has worked out by itself: this shop is that bill, or that category. */
+    val bankLinks: StateFlow<List<com.payandplan.app.data.BankLink>> = repo.observeBankLinks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun forgetBankLink(id: String) = viewModelScope.launch { repo.deleteBankLink(id) }
+
     val pendingMovements: StateFlow<List<com.payandplan.app.data.BankMovement>> =
         repo.observePendingMovements()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

@@ -71,6 +71,7 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val rules by vm.bankRules.collectAsState()
     var refining by remember { mutableStateOf<BankRule?>(null) }
+    val links by vm.bankLinks.collectAsState()
     val samples by vm.notificationSamples.collectAsState()
     var allowed by remember { mutableStateOf(MoneyNotificationListener.isAllowed(context)) }
     var teaching by remember { mutableStateOf<NotificationSample?>(null) }
@@ -130,8 +131,9 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
                 Text("🧾 THE DAY'S EXPENSES", style = MaterialTheme.typography.headlineSmall, color = Ink)
                 Text(
                     "An expense the calendar did not expect is written into the day it happened. " +
-                        "A day's small change would bury the month, so anything under the figure below " +
-                        "joins one entry a day instead of getting its own.",
+                        "A day's small change would bury the month, so anything under the figure " +
+                        "below is shown as one line in the day. Each one still keeps its own shop " +
+                        "and its own category.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Ink
                 )
@@ -202,6 +204,41 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
                         Icons.Filled.Close, { vm.deleteBankRule(rule.id) },
                         color = Coral, size = 32.dp, contentDescription = "Remove the rule"
                     )
+                }
+            }
+        }
+
+        if (links.isNotEmpty()) {
+            item {
+                Text(
+                    "🧠 WHAT IT WORKED OUT",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Ink
+                )
+            }
+            items(links, key = { it.id }) { link ->
+                ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                link.label.ifBlank { link.shop },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Ink
+                            )
+                            Text(
+                                listOfNotNull(
+                                    link.category.ifBlank { null },
+                                    if (link.seriesId.isNotBlank()) "closes a planned bill" else null
+                                ).joinToString("  ·  ").ifBlank { "nothing yet" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Ink
+                            )
+                        }
+                        ComicIconButton(
+                            Icons.Filled.Close, { vm.forgetBankLink(link.id) },
+                            color = Coral, size = 32.dp, contentDescription = "Forget it"
+                        )
+                    }
                 }
             }
         }

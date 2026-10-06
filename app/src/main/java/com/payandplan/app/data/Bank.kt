@@ -100,7 +100,10 @@ data class BankLink(
     /** the shop's name, stripped down so spelling and decorations do not matter */
     val shop: String = "",
     val label: String = "",
+    /** the series this shop closes, when it was ever said to close one */
     val seriesId: String = "",
+    /** what the money at this shop is usually for: "Sport", "Food", ... */
+    val category: String = "",
     val createdAt: Long = 0L
 )
 
