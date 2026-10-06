@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -26,6 +28,28 @@ abstract class AppDatabase : RoomDatabase() {
         /** Keep in step with the @Database version above. */
         const val VERSION = 9
 
+        /**
+         * The bank rules, the movements waiting to be checked and the shop links live only on
+         * this phone: nothing on the server knows about them. A thrown-away database takes
+         * them with it, so every new version gets a migration that keeps what is there.
+         */
+        private val MIGRATIONS = arrayOf(
+            object : Migration(8, 9) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `bank_links` (" +
+                            "`id` TEXT NOT NULL, `shop` TEXT NOT NULL, `label` TEXT NOT NULL, " +
+                            "`seriesId` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                            "PRIMARY KEY(`id`))"
+                    )
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_bank_links_shop` " +
+                            "ON `bank_links` (`shop`)"
+                    )
+                }
+            }
+        )
+
         @Volatile private var instance: AppDatabase? = null
 
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
@@ -33,7 +57,9 @@ abstract class AppDatabase : RoomDatabase() {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "payandplan.db"
-            ).fallbackToDestructiveMigration().build().also { instance = it }
+            ).addMigrations(*MIGRATIONS)
+                .fallbackToDestructiveMigration()
+                .build().also { instance = it }
         }
 
         /** Lets a restored copy replace the file underneath. */
