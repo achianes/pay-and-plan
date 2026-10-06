@@ -241,8 +241,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun unpackableGroups(onResult: (Int) -> Unit) =
         viewModelScope.launch { onResult(repo.unpackableGroups()) }
 
-    fun unpackSmallGroups(onDone: (Int) -> Unit) =
-        viewModelScope.launch { onDone(repo.unpackSmallGroups()) }
+    fun unpackSmallGroups(onlyId: String? = null, onDone: (Int) -> Unit) =
+        viewModelScope.launch { onDone(repo.unpackSmallGroups(onlyId)) }
+
+    fun mergeSmallChange(day: java.time.LocalDate?, onDone: (Int) -> Unit) =
+        viewModelScope.launch { onDone(repo.mergeSmallChange(day)) }
 
     val pendingMovements: StateFlow<List<com.payandplan.app.data.BankMovement>> =
         repo.observePendingMovements()

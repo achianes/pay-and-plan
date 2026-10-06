@@ -37,6 +37,21 @@ interface PaymentDao {
     @Query("SELECT * FROM payments WHERE id = :id")
     suspend fun getById(id: String): Payment?
 
+    /** Everything closed and still standing: the caller says which of it is small change. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND deletedAt IS NULL AND status = 'PAID'
+           ORDER BY dueDate, dueTimeMinutes"""
+    )
+    suspend fun smallChange(calendarId: String): List<Payment>
+
+    /** The days already put back together, which can be taken apart again. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND deletedAt IS NULL AND groupKey = 'smallpack'"""
+    )
+    suspend fun packed(calendarId: String): List<Payment>
+
     /** Every entry of a calendar that carries a title, whatever day it is on. */
     @Query(
         """SELECT * FROM payments

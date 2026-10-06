@@ -116,6 +116,15 @@ data class Payment(
     val isPaid: Boolean get() = statusEnum == PayStatus.PAID
     val isSkipped: Boolean get() = statusEnum == PayStatus.SKIPPED
     /** kept, but out of every total and silent until resumed */
+    /**
+     * The day's small change: a little expense already paid, of the kind that is shown as one
+     * line with the others. It is decided by what the entry is, not by a flag, so an entry
+     * that came back from the server without its grouping is still recognised.
+     */
+    fun isSmallChange(under: Long): Boolean =
+        groupKey != SMALL_PACKED && isBill && isPaid && !isSuspended &&
+            amountCents in 1..under && recurrenceEnum == Recurrence.NONE
+
     val isSuspended: Boolean get() = statusEnum == PayStatus.SUSPENDED
     val isOpen: Boolean get() = statusEnum == PayStatus.PENDING
     val isPrivate: Boolean get() = visibility == Visibility.PRIVATE

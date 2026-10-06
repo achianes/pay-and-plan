@@ -10,6 +10,7 @@ import com.payandplan.app.util.CalendarEvent
 import com.payandplan.app.util.FileStore
 import com.payandplan.app.util.Format
 import com.payandplan.app.util.MoneyText
+import com.payandplan.app.util.SmallChange
 import com.payandplan.app.util.Prefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -1107,29 +1108,16 @@ class Repository(
 
     // ---------------------------------------------------------------- undoing the old lump
 
-    /**
-     * The small change used to be written as one entry a day with the shops listed in its
-     * notes, which is a sentence, not money anybody can add up. One line of it, read back.
-     */
-    private fun unpackLine(line: String): Triple<Int, String, Long>? {
-        val parts = line.split(" \u00b7 ")
-        if (parts.size < 3) return null
-        val clock = parts[0].trim().split(":")
-        val minutes = (clock.getOrNull(0)?.toIntOrNull() ?: return null) * 60 +
-            (clock.getOrNull(1)?.toIntOrNull() ?: return null)
-        val cents = MoneyText.amountCents(parts.last()) ?: return null
-        val shop = parts.subList(1, parts.size - 1).joinToString(" \u00b7 ").trim()
-        if (shop.isBlank()) return null
-        return Triple(minutes, shop, cents)
-    }
-
     /** How many of those lumps can be taken apart without losing a cent. */
-    suspend fun unpackableGroups(): Int =
-        payments.titled(_calendarId.value, SMALL_EXPENSES).count { canUnpack(it) }
+    suspend fun unpackableGroups(): Int = lumps().count { canUnpack(it) }
+
+    private suspend fun lumps(): List<Payment> =
+        (payments.titled(_calendarId.value, SMALL_EXPENSES) + payments.packed(_calendarId.value))
+            .distinctBy { it.id }
 
     private fun canUnpack(entry: Payment): Boolean {
-        val lines = entry.notes.lines().mapNotNull { unpackLine(it) }
-        return lines.isNotEmpty() && lines.sumOf { it.third } == entry.amountCents
+        val lines = entry.notes.lines().mapNotNull { SmallChange.read(it) }
+        return lines.isNotEmpty() && lines.sumOf { it.cents } == entry.amountCents
     }
 
     /**
@@ -1137,13 +1125,14 @@ class Repository(
      * own category to be given. Only the ones whose lines add up exactly to the total are
      * touched; anything else is left alone rather than guessed at. Returns how many went.
      */
-    suspend fun unpackSmallGroups(): Int {
+    suspend fun unpackSmallGroups(onlyId: String? = null): Int {
         var done = 0
         val me = prefs.userId.ifBlank { null }
-        for (entry in payments.titled(_calendarId.value, SMALL_EXPENSES)) {
+        for (entry in lumps().filter { onlyId == null || it.id == onlyId }) {
             if (!canUnpack(entry)) continue
             val stamp = System.currentTimeMillis()
-            for ((minutes, shop, cents) in entry.notes.lines().mapNotNull { unpackLine(it) }) {
+            for ((minutes, shop, cents) in entry.notes.lines()
+                .mapNotNull { SmallChange.read(it) }) {
                 payments.insert(
                     Payment(
                         calendarId = entry.calendarId,
@@ -1175,6 +1164,66 @@ class Repository(
         }
         if (done > 0) syncQuietly()
         return done
+    }
+
+    private suspend fun loose(day: LocalDate?): List<Payment> {
+        val under = prefs.smallExpenseCents
+        val all = payments.smallChange(_calendarId.value).filter { it.isSmallChange(under) }
+        return if (day == null) all else all.filter { it.dueDate == day.toEpochDay() }
+    }
+
+    /**
+     * Puts the day's small change back into one entry — one for each category, so the work of
+     * sorting it is not thrown away, and a single entry when it was all for the same thing.
+     * The lines are kept exactly as the taking-apart reads them, so it can be undone again.
+     */
+    suspend fun mergeSmallChange(day: LocalDate? = null): Int {
+        var made = 0
+        val me = prefs.userId.ifBlank { null }
+        val money = currency()
+        for ((_, ofDay) in loose(day).groupBy { it.dueDate }) {
+            if (ofDay.size < 2) continue
+            for ((category, rows) in ofDay.groupBy { it.category.trim() }) {
+                if (rows.isEmpty()) continue
+                val stamp = System.currentTimeMillis()
+                val first = rows.minByOrNull { it.dueTimeMinutes } ?: continue
+                payments.insert(
+                    Payment(
+                        calendarId = first.calendarId,
+                        seriesId = newId(),
+                        ownerUserId = first.ownerUserId ?: me,
+                        createdByUserId = first.createdByUserId ?: me,
+                        title = category.ifBlank { SMALL_EXPENSES },
+                        amountCents = rows.sumOf { it.amountCents },
+                        currency = money,
+                        category = category,
+                        groupKey = SMALL_PACKED,
+                        notes = rows.sortedBy { it.dueTimeMinutes }
+                            .joinToString("\n") {
+                                SmallChange.line(
+                                    it.dueTimeMinutes, it.title, Format.money(it.amountCents, money)
+                                )
+                            },
+                        dueDate = first.dueDate,
+                        dueTimeMinutes = first.dueTimeMinutes,
+                        kind = EntryKind.BILL.name,
+                        status = PayStatus.PAID.name,
+                        paidAt = rows.mapNotNull { it.paidAt }.minOrNull() ?: stamp,
+                        paidAmountCents = rows.sumOf { it.amountCents },
+                        paidByUserId = first.paidByUserId ?: me,
+                        alarmEnabled = false,
+                        requireReceipt = false,
+                        createdAt = stamp,
+                        updatedAt = stamp,
+                        pendingSync = true
+                    )
+                )
+                for (row in rows) payments.update(stamped(row.copy(deletedAt = stamp)))
+                made++
+            }
+        }
+        if (made > 0) syncQuietly()
+        return made
     }
 
     /** What this movement could be paying off, best first. */
@@ -1529,3 +1578,6 @@ const val SMALL_EXPENSES = "Small expenses"
 
 /** What marks an entry as part of the day's small change, shown as one line. */
 const val SMALL_GROUP = "small"
+
+/** What marks a day's small change that was put back together, and can be opened again. */
+const val SMALL_PACKED = "smallpack"

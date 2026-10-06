@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.payandplan.app.data.Payment
 import com.payandplan.app.data.SMALL_GROUP
+import com.payandplan.app.data.SMALL_PACKED
 import com.payandplan.app.ui.MainViewModel
 import com.payandplan.app.ui.components.AttachButtons
 import com.payandplan.app.ui.components.AttachmentStrip
@@ -59,6 +60,7 @@ fun DayScreen(
     val attachments by vm.dayAttachments(day).collectAsState(initial = emptyList())
     val note by vm.dayNote(day).collectAsState(initial = null)
     val categories by vm.entryCategories.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val currency = vm.currency()
 
     var noteText by remember(note?.epochDay, note?.updatedAt) { mutableStateOf(note?.text ?: "") }
@@ -112,8 +114,11 @@ fun DayScreen(
             item { SpeechBubble("No bills on this day.", Modifier.fillMaxWidth(), Yellow, "😌") }
         } else {
             // the day's small change is one line until you ask to see what is inside it
-            val small = payments.filter { it.groupKey == SMALL_GROUP }
-            items(payments.filter { it.groupKey != SMALL_GROUP }, key = { it.id }) { p ->
+            val under = vm.smallExpenseCents()
+            val small = payments.filter { it.isSmallChange(under) }
+            val packed = payments.filter { it.groupKey == SMALL_PACKED }
+            val plain = payments.filter { !it.isSmallChange(under) && it.groupKey != SMALL_PACKED }
+            items(plain, key = { it.id }) { p ->
                 PaymentRow(
                     payment = p,
                     currency = currency,
@@ -130,10 +135,37 @@ fun DayScreen(
                         currency = currency,
                         categories = categories,
                         onCategory = { id, c -> vm.setCategory(id, c) },
-                        onOpen = onOpenPayment
+                        onOpen = onOpenPayment,
+                        onMerge = if (small.size > 1) ({
+                            vm.mergeSmallChange(day) { made ->
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (made > 0) "Put back together" else "Nothing to put together",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }) else null
                     )
                     Box(Modifier.height(6.dp))
                 }
+            }
+
+            items(packed, key = { it.id }) { p ->
+                PackedCard(
+                    entry = p,
+                    currency = currency,
+                    onOpen = { onOpenPayment(p.id) },
+                    onTakeApart = {
+                        vm.unpackSmallGroups(p.id) { done ->
+                            android.widget.Toast.makeText(
+                                context,
+                                if (done > 0) "Opened up again" else "Could not open it up",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                )
+                Box(Modifier.height(6.dp))
             }
         }
 
@@ -197,7 +229,8 @@ private fun SmallChangeCard(
     currency: String,
     categories: List<String>,
     onCategory: (String, String) -> Unit,
-    onOpen: (String) -> Unit
+    onOpen: (String) -> Unit,
+    onMerge: (() -> Unit)? = null
 ) {
     var open by remember { mutableStateOf(false) }
     var tagging by remember { mutableStateOf<Payment?>(null) }
@@ -228,6 +261,15 @@ private fun SmallChangeCard(
             )
         }
         if (open) {
+            if (onMerge != null) {
+                Box(Modifier.height(8.dp))
+                ComicButton("\uD83D\uDCE6 PUT BACK TOGETHER", onMerge, color = Paper, compact = true)
+                Text(
+                    "One entry for each category, so the sorting stays.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
+            }
             for (e in entries) {
                 Box(Modifier.height(8.dp))
                 ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
@@ -311,3 +353,43 @@ private fun CategoryDialog(
 val DEFAULT_SPEND_CATEGORIES = listOf(
     "Food", "Transport", "Home", "Health", "School", "Fun", "Clothes", "Bills"
 )
+
+/**
+ * A day's small change that was put back together. It reads as one entry, and opens up into
+ * the single shops again whenever the sorting has to be done differently.
+ */
+@Composable
+private fun PackedCard(
+    entry: Payment,
+    currency: String,
+    onOpen: () -> Unit,
+    onTakeApart: () -> Unit
+) {
+    val lines = entry.notes.lines().filter { it.isNotBlank() }
+    ComicCard(color = Tangerine, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().clickable { onOpen() },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                Text(
+                    "\uD83D\uDCE6 " + entry.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Ink
+                )
+                Text(
+                    "${lines.size} small purchases put together",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
+            }
+            Text(
+                Format.money(entry.amountCents, currency),
+                style = MaterialTheme.typography.headlineSmall,
+                color = Ink
+            )
+        }
+        Box(Modifier.height(8.dp))
+        ComicButton("OPEN IT UP AGAIN", onTakeApart, color = Paper, compact = true)
+    }
+}
