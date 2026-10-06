@@ -260,16 +260,17 @@ private fun SmallChangeCard(
                 color = Ink
             )
         }
+        // in plain sight, open or shut: nobody looks for a button inside something closed
+        if (onMerge != null) {
+            Box(Modifier.height(10.dp))
+            ComicButton("\uD83D\uDCE6 PUT BACK TOGETHER", onMerge, color = Paper, compact = true)
+            Text(
+                "One entry for each category, so the sorting stays.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Ink
+            )
+        }
         if (open) {
-            if (onMerge != null) {
-                Box(Modifier.height(8.dp))
-                ComicButton("\uD83D\uDCE6 PUT BACK TOGETHER", onMerge, color = Paper, compact = true)
-                Text(
-                    "One entry for each category, so the sorting stays.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Ink
-                )
-            }
             for (e in entries) {
                 Box(Modifier.height(8.dp))
                 ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
