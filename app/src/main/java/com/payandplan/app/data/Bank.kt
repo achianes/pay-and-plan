@@ -7,6 +7,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import com.payandplan.app.util.MoneyText
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -21,10 +22,23 @@ data class BankRule(
     val appLabel: String = "",
     /** "pagamento accettato", "nuovo bonifico ricevuto", ... */
     val phrase: String = "",
+    /**
+     * Words that call the whole thing off. "Pagamento accettato" is one wording and
+     * "Pagamento NON accettato" contains it: the second must not become a movement.
+     */
+    val butNot: String = "",
     val kind: String = MoneyKind.OUT,
     val enabled: Boolean = true,
     val createdAt: Long = 0L
-)
+) {
+    /** Whether this rule recognises a notification: the words are there, the denial is not. */
+    fun matches(title: String?, text: String?): Boolean {
+        val said = MoneyText.contains(title, phrase) || MoneyText.contains(text, phrase)
+        if (!said) return false
+        if (butNot.isBlank()) return true
+        return !(MoneyText.contains(title, butNot) || MoneyText.contains(text, butNot))
+    }
+}
 
 object MoneyKind {
     const val OUT = "OUT"

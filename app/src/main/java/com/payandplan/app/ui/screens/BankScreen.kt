@@ -2,6 +2,7 @@ package com.payandplan.app.ui.screens
 
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +70,7 @@ import java.time.ZoneId
 fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val rules by vm.bankRules.collectAsState()
+    var refining by remember { mutableStateOf<BankRule?>(null) }
     val samples by vm.notificationSamples.collectAsState()
     var allowed by remember { mutableStateOf(MoneyNotificationListener.isAllowed(context)) }
     var teaching by remember { mutableStateOf<NotificationSample?>(null) }
@@ -179,11 +181,17 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
         }
 
         items(rules, key = { it.id }) { rule ->
-            ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
+            ComicCard(
+                color = Paper,
+                modifier = Modifier.fillMaxWidth().clickable { refining = rule }
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(rule.appLabel.ifBlank { rule.packageName }, style = MaterialTheme.typography.titleMedium, color = Ink)
                         Text("\"${rule.phrase}\"", style = MaterialTheme.typography.bodyMedium, color = Ink)
+                        if (rule.butNot.isNotBlank()) {
+                            Text("but not \"${rule.butNot}\"", style = MaterialTheme.typography.bodySmall, color = Ink)
+                        }
                         Text(
                             if (rule.kind == MoneyKind.IN) "money in" else "money out",
                             style = MaterialTheme.typography.labelSmall,
@@ -256,12 +264,13 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
     teaching?.let { sample ->
         RuleDialog(
             sample = sample,
-            onSave = { phrase, kind ->
+            onSave = { phrase, butNot, kind ->
                 vm.saveBankRule(
                     BankRule(
                         packageName = sample.packageName,
                         appLabel = sample.appLabel,
                         phrase = phrase,
+                        butNot = butNot,
                         kind = kind
                     )
                 )
@@ -270,13 +279,51 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
             onDismiss = { teaching = null }
         )
     }
+
+    refining?.let { rule ->
+        ButNotDialog(
+            rule = rule,
+            onSave = { butNot ->
+                vm.saveBankRule(rule.copy(butNot = butNot))
+                refining = null
+            },
+            onDismiss = { refining = null }
+        )
+    }
+}
+
+/** The words that call a rule off, added to a rule that is already there. */
+@Composable
+private fun ButNotDialog(rule: BankRule, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var butNot by remember(rule.id) { mutableStateOf(rule.butNot) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Paper,
+        title = { Text("BUT NOT IF IT SAYS…", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                Text("\"${rule.phrase}\"", style = MaterialTheme.typography.bodyMedium, color = Ink)
+                Text(
+                    "A refusal carries the same words. Whatever you write here keeps it out.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
+                Box(Modifier.height(10.dp))
+                ComicField(butNot, { butNot = it }, "e.g. non accettato", Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            ComicButton("SAVE", { onSave(butNot.trim()) }, color = Mint, compact = true)
+        },
+        dismissButton = { ComicButton("Cancel", onDismiss, color = Paper, compact = true) }
+    )
 }
 
 /** The words that give a notification away, and what they mean. */
 @Composable
 private fun RuleDialog(
     sample: NotificationSample,
-    onSave: (String, String) -> Unit,
+    onSave: (String, String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     // the first words of the line usually are the wording the bank repeats every time
@@ -290,6 +337,7 @@ private fun RuleDialog(
             .take(40)
     }
     var phrase by remember(sample.id) { mutableStateOf(suggestion) }
+    var butNot by remember(sample.id) { mutableStateOf("") }
     var kind by remember(sample.id) { mutableStateOf(MoneyKind.OUT) }
 
     AlertDialog(
@@ -307,6 +355,13 @@ private fun RuleDialog(
                 Box(Modifier.height(10.dp))
                 ComicField(phrase, { phrase = it }, "Words that always appear", Modifier.fillMaxWidth())
                 Box(Modifier.height(10.dp))
+                ComicField(butNot, { butNot = it }, "But not if it says… (optional)", Modifier.fillMaxWidth())
+                Text(
+                    "A refusal carries the same words: \"non accettato\" written here keeps it out.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink
+                )
+                Box(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ComicChip("💸 Money out", kind == MoneyKind.OUT, { kind = MoneyKind.OUT }, color = Coral)
                     ComicChip("💰 Money in", kind == MoneyKind.IN, { kind = MoneyKind.IN }, color = Mint)
@@ -315,7 +370,7 @@ private fun RuleDialog(
         },
         confirmButton = {
             ComicButton("SAVE THE RULE", {
-                if (phrase.isNotBlank()) onSave(phrase.trim(), kind)
+                if (phrase.isNotBlank()) onSave(phrase.trim(), butNot.trim(), kind)
             }, color = Mint, compact = true)
         },
         dismissButton = { ComicButton("Cancel", onDismiss, color = Paper, compact = true) }

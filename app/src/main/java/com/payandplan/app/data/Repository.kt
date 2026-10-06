@@ -826,9 +826,7 @@ class Repository(
 
         // the notification it was taught from is already here: read it now, not next time
         bank.samplesFor(stored.packageName)
-            .filter {
-                MoneyText.contains(it.title, stored.phrase) || MoneyText.contains(it.text, stored.phrase)
-            }
+            .filter { stored.matches(it.title, it.text) }
             .forEach { sample ->
                 recordMovement(stored, sample.packageName, sample.appLabel, sample.title, sample.text, sample.seenAt)
             }
@@ -859,8 +857,7 @@ class Repository(
         bank.trimSamples()
 
         val rule = bank.enabledRules().firstOrNull {
-            it.packageName == packageName &&
-                (MoneyText.contains(title, it.phrase) || MoneyText.contains(text, it.phrase))
+            it.packageName == packageName && it.matches(title, text)
         } ?: return false
         return recordMovement(rule, packageName, appLabel, title, text, postedAt)
     }
@@ -873,9 +870,7 @@ class Repository(
         var made = 0
         for (rule in bank.enabledRules()) {
             bank.samplesFor(rule.packageName)
-                .filter {
-                    MoneyText.contains(it.title, rule.phrase) || MoneyText.contains(it.text, rule.phrase)
-                }
+                .filter { rule.matches(it.title, it.text) }
                 .forEach { sample ->
                     if (recordMovement(rule, sample.packageName, sample.appLabel, sample.title, sample.text, sample.seenAt)) {
                         made++
