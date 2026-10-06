@@ -23,6 +23,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import com.payandplan.app.data.Payment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +88,14 @@ fun PaymentDetailScreen(
     val canClose = !p.requireReceipt || receipts.isNotEmpty()
     val owner = vm.memberById(p.ownerUserId)
     val recurring = p.recurrenceEnum != Recurrence.NONE
+
+    // what the bank already closed for about this figure: the same money, probably
+    var alreadyPaid by remember(p.id, p.status) { mutableStateOf<List<Payment>>(emptyList()) }
+    var sameAs by remember(p.id) { mutableStateOf<Payment?>(null) }
+    LaunchedEffect(p.id, p.status, p.amountCents) {
+        if (p.isOpen && p.amountCents > 0) vm.alreadyPaidLike(p) { alreadyPaid = it }
+        else alreadyPaid = emptyList()
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 40.dp),
@@ -262,6 +272,37 @@ fun PaymentDetailScreen(
             }
         }
 
+        if (p.isOpen && p.amountCents > 0 && alreadyPaid.isNotEmpty()) {
+            item {
+                ComicCard(color = Tangerine, modifier = Modifier.fillMaxWidth()) {
+                    Text("💳 ALREADY PAID?", style = MaterialTheme.typography.headlineSmall, color = Ink)
+                    Text(
+                        "Closed in the last week for about the same figure. If one of these was this " +
+                            "bill, say so: the two become one and the month stops counting it twice.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink
+                    )
+                    for (candidate in alreadyPaid.take(4)) {
+                        Box(Modifier.height(8.dp))
+                        ComicCard(
+                            color = Paper,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { sameAs = candidate }
+                        ) {
+                            Text(candidate.title, style = MaterialTheme.typography.titleMedium, color = Ink)
+                            Text(
+                                Format.money(candidate.amountCents, currency) + " · " +
+                                    Format.day(LocalDate.ofEpochDay(candidate.dueDate)) +
+                                    if (candidate.amountCents == p.amountCents) " · same figure" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Ink
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         if (p.recurrenceEnum != Recurrence.NONE) {
             item {
                 ComicCard(color = Sky, modifier = Modifier.fillMaxWidth()) {
@@ -388,6 +429,37 @@ fun PaymentDetailScreen(
             dismissButton = {
                 ComicButton("Keep going", { confirmStop = false }, color = Paper, compact = true)
             }
+        )
+    }
+
+    sameAs?.let { actual ->
+        AlertDialog(
+            onDismissRequest = { sameAs = null },
+            containerColor = Paper,
+            title = { Text("THE SAME PAYMENT?", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    "\"${actual.title}\" for ${Format.money(actual.amountCents, currency)} was " +
+                        "\"${p.title}\". This entry closes for that figure and the bank's own one goes, " +
+                        "so the month counts it once.\n\n" +
+                        "Told to remember, the next payment from that shop closes this bill by itself.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    ComicButton("YES, AND ALWAYS", {
+                        vm.resolveWith(p.id, actual.id, remember = true)
+                        sameAs = null
+                    }, color = Mint, compact = true)
+                    Box(Modifier.height(8.dp))
+                    ComicButton("Just this once", {
+                        vm.resolveWith(p.id, actual.id, remember = false)
+                        sameAs = null
+                    }, color = Paper, compact = true)
+                }
+            },
+            dismissButton = { ComicButton("Cancel", { sameAs = null }, color = Paper, compact = true) }
         )
     }
 

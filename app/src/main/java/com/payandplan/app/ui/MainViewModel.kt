@@ -258,6 +258,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onDone(fromShade + fromSamples)
     }
 
+    fun alreadyPaidLike(
+        planned: com.payandplan.app.data.Payment,
+        onResult: (List<com.payandplan.app.data.Payment>) -> Unit
+    ) = viewModelScope.launch { onResult(repo.alreadyPaidLike(planned)) }
+
+    fun resolveWith(plannedId: String, actualId: String, remember: Boolean) =
+        viewModelScope.launch { repo.resolveWith(plannedId, actualId, remember) }
+
     fun autoAddExpenses(): Boolean = prefs.autoAddExpenses
     fun setAutoAddExpenses(on: Boolean) { prefs.autoAddExpenses = on }
     fun smallExpenseCents(): Long = prefs.smallExpenseCents

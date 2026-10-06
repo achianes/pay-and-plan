@@ -9,9 +9,9 @@ import androidx.room.RoomDatabase
     entities = [
         Payment::class, Attachment::class, DayNote::class,
         ShoppingList::class, ShoppingItem::class, Note::class,
-        BankRule::class, BankMovement::class, NotificationSample::class
+        BankRule::class, BankMovement::class, NotificationSample::class, BankLink::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,7 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Keep in step with the @Database version above. */
-        const val VERSION = 8
+        const val VERSION = 9
 
         @Volatile private var instance: AppDatabase? = null
 

@@ -37,6 +37,22 @@ interface PaymentDao {
     @Query("SELECT * FROM payments WHERE id = :id")
     suspend fun getById(id: String): Payment?
 
+    /** Everything already closed since a day: what a planned bill might have been paid as. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND deletedAt IS NULL AND status = 'PAID'
+             AND dueDate >= :from ORDER BY dueDate DESC"""
+    )
+    suspend fun paidSince(calendarId: String, from: Long): List<Payment>
+
+    /** The open entry of a series closest to a day: the one a payment is probably for. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE seriesId = :seriesId AND deletedAt IS NULL AND status = 'PENDING'
+           ORDER BY ABS(dueDate - :day) LIMIT 1"""
+    )
+    suspend fun nearestOpenInSeries(seriesId: String, day: Long): Payment?
+
     /** The one entry of a day that carries a given title, if it is already there. */
     @Query(
         """SELECT * FROM payments

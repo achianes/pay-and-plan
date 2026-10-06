@@ -906,6 +906,19 @@ class Repository(
         bank.upsertMovement(movement)
         bank.forgetOlderThan(happenedAt - 90L * 24 * 60 * 60 * 1000)
 
+        // a shop the house has already sorted out once closes the same series again
+        val shop = MoneyText.merchant(text, title)
+        val learnt = shop?.let { bank.linkFor(MoneyText.bare(it)) }
+        if (learnt != null) {
+            val day = java.time.Instant.ofEpochMilli(happenedAt)
+                .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay()
+            val waiting = payments.nearestOpenInSeries(learnt.seriesId, day)
+            if (waiting != null) {
+                confirmMovement(movement.id, waiting.id, auto = true)
+                return true
+            }
+        }
+
         // figure and wording both agree with something that was waiting: tick it off
         val best = candidatesFor(movement).firstOrNull()
         if (best != null && best.sure) {
@@ -1006,6 +1019,67 @@ class Repository(
         )
         syncQuietly()
     }
+
+    // ---------------------------------------------------------------- the same money twice
+
+    /**
+     * What a planned bill might already have been paid as: anything closed in the last week
+     * for roughly the same figure. The grouped small change is left out, it is not one thing.
+     */
+    suspend fun alreadyPaidLike(planned: Payment, days: Long = 7, tolerance: Double = 0.10): List<Payment> {
+        if (planned.amountCents <= 0) return emptyList()
+        val from = Format.today().minusDays(days).toEpochDay()
+        val room = (planned.amountCents * tolerance).toLong().coerceAtLeast(1)
+        return payments.paidSince(_calendarId.value, from)
+            .filter { it.id != planned.id && it.seriesId != planned.seriesId }
+            .filter { it.title != SMALL_EXPENSES && it.kind == planned.kind }
+            .filter { kotlin.math.abs(it.amountCents - planned.amountCents) <= room }
+            .sortedBy { kotlin.math.abs(it.amountCents - planned.amountCents) }
+    }
+
+    /**
+     * The planned bill and the payment that actually happened are one thing: the planned one
+     * is closed for the figure that left the account, and the bank's own entry goes, so the
+     * month is not counted twice. With [remember], that shop closes this series from now on.
+     */
+    suspend fun resolveWith(plannedId: String, actualId: String, remember: Boolean) {
+        val planned = payments.getById(plannedId) ?: return
+        val actual = payments.getById(actualId) ?: return
+        val stamp = System.currentTimeMillis()
+
+        payments.update(
+            stamped(
+                planned.copy(
+                    status = PayStatus.PAID.name,
+                    paidAt = actual.paidAt ?: stamp,
+                    paidAmountCents = actual.paidAmountCents ?: actual.amountCents,
+                    paidByUserId = actual.paidByUserId ?: prefs.userId.ifBlank { null },
+                    notes = listOf(planned.notes, actual.notes).filter { it.isNotBlank() }.joinToString("\n"),
+                    snoozedUntil = null
+                )
+            )
+        )
+        payments.update(stamped(actual.copy(deletedAt = stamp)))
+        AlarmScheduler.cancel(context, planned.id)
+        AlarmScheduler.dismissNotification(context, planned.id)
+
+        if (remember && actual.title.isNotBlank()) {
+            bank.upsertLink(
+                BankLink(
+                    shop = MoneyText.bare(actual.title),
+                    label = actual.title,
+                    seriesId = planned.seriesId,
+                    createdAt = stamp
+                )
+            )
+        }
+        topUp(planned.seriesId)
+        syncQuietly()
+    }
+
+    fun observeBankLinks(): Flow<List<BankLink>> = bank.observeLinks()
+
+    suspend fun deleteBankLink(id: String) = bank.deleteLink(id)
 
     /** What this movement could be paying off, best first. */
     suspend fun candidatesFor(movement: BankMovement): List<MovementMatch> {

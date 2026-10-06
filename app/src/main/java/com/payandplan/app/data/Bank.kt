@@ -76,8 +76,36 @@ data class NotificationSample(
     val seenAt: Long = 0L
 )
 
+/**
+ * "That shop is this bill." Once somebody says a payment from CENTRO SPORTIVO closes the
+ * taekwondo entry, the next one closes it by itself, whatever the calendar expected.
+ */
+@Entity(tableName = "bank_links", indices = [Index(value = ["shop"], unique = true)])
+data class BankLink(
+    @PrimaryKey val id: String = newId(),
+    /** the shop's name, stripped down so spelling and decorations do not matter */
+    val shop: String = "",
+    val label: String = "",
+    val seriesId: String = "",
+    val createdAt: Long = 0L
+)
+
 @Dao
 interface BankDao {
+
+    // ---------------------------------------------------------------- learnt links
+
+    @Query("SELECT * FROM bank_links WHERE shop = :shop LIMIT 1")
+    suspend fun linkFor(shop: String): BankLink?
+
+    @Query("SELECT * FROM bank_links ORDER BY label")
+    fun observeLinks(): Flow<List<BankLink>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLink(link: BankLink)
+
+    @Query("DELETE FROM bank_links WHERE id = :id")
+    suspend fun deleteLink(id: String)
 
     // ---------------------------------------------------------------- rules
 
