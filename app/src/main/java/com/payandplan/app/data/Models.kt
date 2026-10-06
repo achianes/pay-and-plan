@@ -1,5 +1,7 @@
 package com.payandplan.app.data
 
+import com.payandplan.app.util.SmallChange
+
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -122,8 +124,12 @@ data class Payment(
      * that came back from the server without its grouping is still recognised.
      */
     fun isSmallChange(under: Long): Boolean =
-        groupKey != SMALL_PACKED && isBill && isPaid && !isSuspended &&
+        !isPacked && isBill && isPaid && !isSuspended &&
             amountCents in 1..under && recurrenceEnum == Recurrence.NONE
+
+    /** A day already put together, whatever the server did to its grouping on the way. */
+    val isPacked: Boolean
+        get() = groupKey == SMALL_PACKED || SmallChange.isPacked(notes, amountCents)
 
     val isSuspended: Boolean get() = statusEnum == PayStatus.SUSPENDED
     val isOpen: Boolean get() = statusEnum == PayStatus.PENDING

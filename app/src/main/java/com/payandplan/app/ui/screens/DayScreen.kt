@@ -27,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.payandplan.app.data.Payment
 import com.payandplan.app.data.SMALL_GROUP
-import com.payandplan.app.data.SMALL_PACKED
 import com.payandplan.app.ui.MainViewModel
 import com.payandplan.app.ui.components.AttachButtons
 import com.payandplan.app.ui.components.AttachmentStrip
@@ -116,8 +115,8 @@ fun DayScreen(
             // the day's small change is one line until you ask to see what is inside it
             val under = vm.smallExpenseCents()
             val small = payments.filter { it.isSmallChange(under) }
-            val packed = payments.filter { it.groupKey == SMALL_PACKED }
-            val plain = payments.filter { !it.isSmallChange(under) && it.groupKey != SMALL_PACKED }
+            val packed = payments.filter { it.isPacked }
+            val plain = payments.filter { !it.isSmallChange(under) && !it.isPacked }
             items(plain, key = { it.id }) { p ->
                 PaymentRow(
                     payment = p,
@@ -265,7 +264,7 @@ private fun SmallChangeCard(
             Box(Modifier.height(10.dp))
             ComicButton("\uD83D\uDCE6 PUT BACK TOGETHER", onMerge, color = Paper, compact = true)
             Text(
-                "One entry for each category, so the sorting stays.",
+                "One entry for the day. Each purchase keeps its shop and its category inside.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Ink
             )
@@ -379,7 +378,7 @@ private fun PackedCard(
                     color = Ink
                 )
                 Text(
-                    "${lines.size} small purchases put together",
+                    if (lines.size == 1) "one small purchase" else "${lines.size} small purchases put together",
                     style = MaterialTheme.typography.bodySmall,
                     color = Ink
                 )

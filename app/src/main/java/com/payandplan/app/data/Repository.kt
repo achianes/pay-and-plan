@@ -1115,10 +1115,8 @@ class Repository(
         (payments.titled(_calendarId.value, SMALL_EXPENSES) + payments.packed(_calendarId.value))
             .distinctBy { it.id }
 
-    private fun canUnpack(entry: Payment): Boolean {
-        val lines = entry.notes.lines().mapNotNull { SmallChange.read(it) }
-        return lines.isNotEmpty() && lines.sumOf { it.cents } == entry.amountCents
-    }
+    private fun canUnpack(entry: Payment): Boolean =
+        SmallChange.isPacked(entry.notes, entry.amountCents)
 
     /**
      * Takes the old lumps apart: one entry per line, each with its shop, its time and its
@@ -1131,7 +1129,7 @@ class Repository(
         for (entry in lumps().filter { onlyId == null || it.id == onlyId }) {
             if (!canUnpack(entry)) continue
             val stamp = System.currentTimeMillis()
-            for ((minutes, shop, cents) in entry.notes.lines()
+            for ((minutes, shop, cents, sorted) in entry.notes.lines()
                 .mapNotNull { SmallChange.read(it) }) {
                 payments.insert(
                     Payment(
@@ -1142,7 +1140,7 @@ class Repository(
                         title = shop,
                         amountCents = cents,
                         currency = entry.currency,
-                        category = categoryFor(shop),
+                        category = sorted.ifBlank { categoryFor(shop) },
                         groupKey = SMALL_GROUP,
                         dueDate = entry.dueDate,
                         dueTimeMinutes = minutes,
@@ -1173,54 +1171,56 @@ class Repository(
     }
 
     /**
-     * Puts the day's small change back into one entry — one for each category, so the work of
-     * sorting it is not thrown away, and a single entry when it was all for the same thing.
-     * The lines are kept exactly as the taking-apart reads them, so it can be undone again.
+     * Puts the day's small change back into one entry. Every purchase keeps its shop, its
+     * time, its figure and the category it was sorted into, written on a line of its own, so
+     * opening it up again gives back exactly what went in. A day of one purchase is left as
+     * it is: there is nothing to put together.
      */
     suspend fun mergeSmallChange(day: LocalDate? = null): Int {
         var made = 0
         val me = prefs.userId.ifBlank { null }
         val money = currency()
-        for ((_, ofDay) in loose(day).groupBy { it.dueDate }) {
-            if (ofDay.size < 2) continue
-            for ((category, rows) in ofDay.groupBy { it.category.trim() }) {
-                if (rows.isEmpty()) continue
-                val stamp = System.currentTimeMillis()
-                val first = rows.minByOrNull { it.dueTimeMinutes } ?: continue
-                payments.insert(
-                    Payment(
-                        calendarId = first.calendarId,
-                        seriesId = newId(),
-                        ownerUserId = first.ownerUserId ?: me,
-                        createdByUserId = first.createdByUserId ?: me,
-                        title = category.ifBlank { SMALL_EXPENSES },
-                        amountCents = rows.sumOf { it.amountCents },
-                        currency = money,
-                        category = category,
-                        groupKey = SMALL_PACKED,
-                        notes = rows.sortedBy { it.dueTimeMinutes }
-                            .joinToString("\n") {
-                                SmallChange.line(
-                                    it.dueTimeMinutes, it.title, Format.money(it.amountCents, money)
-                                )
-                            },
-                        dueDate = first.dueDate,
-                        dueTimeMinutes = first.dueTimeMinutes,
-                        kind = EntryKind.BILL.name,
-                        status = PayStatus.PAID.name,
-                        paidAt = rows.mapNotNull { it.paidAt }.minOrNull() ?: stamp,
-                        paidAmountCents = rows.sumOf { it.amountCents },
-                        paidByUserId = first.paidByUserId ?: me,
-                        alarmEnabled = false,
-                        requireReceipt = false,
-                        createdAt = stamp,
-                        updatedAt = stamp,
-                        pendingSync = true
-                    )
+        for ((_, rows) in loose(day).groupBy { it.dueDate }) {
+            if (rows.size < 2) continue
+            val stamp = System.currentTimeMillis()
+            val first = rows.minByOrNull { it.dueTimeMinutes } ?: continue
+            val sorted = rows.map { it.category.trim() }.filter { it.isNotBlank() }.distinct()
+            payments.insert(
+                Payment(
+                    calendarId = first.calendarId,
+                    seriesId = newId(),
+                    ownerUserId = first.ownerUserId ?: me,
+                    createdByUserId = first.createdByUserId ?: me,
+                    title = SMALL_EXPENSES,
+                    amountCents = rows.sumOf { it.amountCents },
+                    currency = money,
+                    // one entry can only carry one; the lines below carry the rest
+                    category = sorted.singleOrNull().orEmpty(),
+                    groupKey = SMALL_PACKED,
+                    notes = rows.sortedBy { it.dueTimeMinutes }.joinToString("\n") {
+                        SmallChange.line(
+                            it.dueTimeMinutes,
+                            it.title,
+                            Format.money(it.amountCents, money),
+                            it.category
+                        )
+                    },
+                    dueDate = first.dueDate,
+                    dueTimeMinutes = first.dueTimeMinutes,
+                    kind = EntryKind.BILL.name,
+                    status = PayStatus.PAID.name,
+                    paidAt = rows.mapNotNull { it.paidAt }.minOrNull() ?: stamp,
+                    paidAmountCents = rows.sumOf { it.amountCents },
+                    paidByUserId = first.paidByUserId ?: me,
+                    alarmEnabled = false,
+                    requireReceipt = false,
+                    createdAt = stamp,
+                    updatedAt = stamp,
+                    pendingSync = true
                 )
-                for (row in rows) payments.update(stamped(row.copy(deletedAt = stamp)))
-                made++
-            }
+            )
+            for (row in rows) payments.update(stamped(row.copy(deletedAt = stamp)))
+            made++
         }
         if (made > 0) syncQuietly()
         return made

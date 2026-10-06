@@ -52,6 +52,13 @@ interface PaymentDao {
     )
     suspend fun packed(calendarId: String): List<Payment>
 
+    /** Everything closed: which of it reads as a day already put together is read here. */
+    @Query(
+        """SELECT * FROM payments
+           WHERE calendarId = :calendarId AND deletedAt IS NULL AND status = 'PAID'"""
+    )
+    suspend fun closed(calendarId: String): List<Payment>
+
     /** Every entry of a calendar that carries a title, whatever day it is on. */
     @Query(
         """SELECT * FROM payments
