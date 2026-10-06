@@ -1,5 +1,6 @@
 package com.payandplan.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import com.payandplan.app.ui.theme.Mint
 import com.payandplan.app.ui.theme.Paper
 import com.payandplan.app.ui.theme.PosterFont
 import com.payandplan.app.ui.theme.Sky
+import com.payandplan.app.ui.theme.Tangerine
 import com.payandplan.app.ui.theme.Yellow
 import com.payandplan.app.ui.theme.stickerColor
 import com.payandplan.app.util.Format
@@ -55,7 +57,8 @@ private enum class Filter(val label: String) {
 @Composable
 fun PaymentsScreen(
     vm: MainViewModel,
-    onOpenPayment: (String) -> Unit
+    onOpenPayment: (String) -> Unit,
+    onOpenSpend: () -> Unit = {}
 ) {
     val everything by vm.allPayments.collectAsState()
     val movements by vm.pendingMovements.collectAsState()
@@ -101,6 +104,28 @@ fun PaymentsScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item { PosterTitle("MY BILLS") }
+
+        item {
+            ComicCard(
+                color = Tangerine,
+                modifier = Modifier.fillMaxWidth().clickable { onOpenSpend() }
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "\uD83D\uDCCA WHERE IT GOES",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Ink
+                        )
+                        Text(
+                            "Month by month and year by year, broken down by category.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Ink
+                        )
+                    }
+                }
+            }
+        }
 
         if (vm.members().size > 1) {
             item {

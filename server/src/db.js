@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS payments (
   currency TEXT NOT NULL DEFAULT 'EUR',
   color_index INTEGER NOT NULL DEFAULT 0,
   category TEXT NOT NULL DEFAULT '',
+  group_key TEXT NOT NULL DEFAULT '',
   due_date INTEGER NOT NULL,
   due_time_minutes INTEGER NOT NULL DEFAULT 540,
   recurrence TEXT NOT NULL DEFAULT 'NONE',
@@ -204,6 +205,7 @@ for (const [table, column, ddl] of [
   ['shopping_lists', 'due_time_minutes', 'ALTER TABLE shopping_lists ADD COLUMN due_time_minutes INTEGER NOT NULL DEFAULT 1080'],
   ['attachments', 'item_id', 'ALTER TABLE attachments ADD COLUMN item_id TEXT'],
   ['attachments', 'note_id', 'ALTER TABLE attachments ADD COLUMN note_id TEXT'],
+  ['payments', 'group_key', "ALTER TABLE payments ADD COLUMN group_key TEXT NOT NULL DEFAULT ''"],
   ['shopping_items', 'barcode', "ALTER TABLE shopping_items ADD COLUMN barcode TEXT NOT NULL DEFAULT ''"]
 ]) {
   const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column)

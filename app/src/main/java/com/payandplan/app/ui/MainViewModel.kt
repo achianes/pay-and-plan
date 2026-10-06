@@ -319,6 +319,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun updateSeries(payment: Payment, onDone: () -> Unit = {}) =
         viewModelScope.launch { repo.updateSeriesFromHere(payment); onDone() }
 
+    fun setCategory(id: String, category: String) =
+        viewModelScope.launch { repo.setCategory(id, category) }
+
     fun markPaid(id: String) = viewModelScope.launch { repo.markPaid(id) }
     fun markUnpaid(id: String) = viewModelScope.launch { repo.markUnpaid(id) }
     fun skip(id: String) = viewModelScope.launch { repo.skip(id) }

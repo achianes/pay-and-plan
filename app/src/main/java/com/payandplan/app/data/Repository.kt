@@ -258,6 +258,13 @@ class Repository(
         syncQuietly()
     }
 
+    /** What an entry was for. Free text: whatever is typed joins the list of the others. */
+    suspend fun setCategory(id: String, category: String) {
+        val entry = payments.getById(id) ?: return
+        payments.update(stamped(entry.copy(category = category.trim())))
+        syncQuietly()
+    }
+
     suspend fun markPaid(id: String, paidCents: Long? = null) {
         val p = payments.getById(id) ?: return
         payments.update(
@@ -964,46 +971,36 @@ class Repository(
         val moment = java.time.Instant.ofEpochMilli(movement.happenedAt)
             .atZone(java.time.ZoneId.systemDefault())
         val day = moment.toLocalDate()
-        val line = "${Format.time(moment.hour * 60 + moment.minute)} · " +
-            (MoneyText.merchant(movement.text, movement.title) ?: movement.title.ifBlank { movement.appLabel }) +
-            " · " + Format.money(movement.amountCents, currency())
-
-        val already = payments.onDayTitled(_calendarId.value, day.toEpochDay(), SMALL_EXPENSES)
+        val shop = MoneyText.merchant(movement.text, movement.title)
+            ?: movement.title.ifBlank { movement.appLabel }
         val me = prefs.userId.ifBlank { null }
-        val entry = if (already != null) {
-            already.copy(
-                amountCents = already.amountCents + movement.amountCents,
-                paidAmountCents = (already.paidAmountCents ?: 0L) + movement.amountCents,
-                notes = (already.notes + "\n" + line).trim(),
-                updatedAt = stamp,
-                pendingSync = true
-            )
-        } else {
-            Payment(
-                calendarId = _calendarId.value,
-                seriesId = newId(),
-                ownerUserId = me,
-                createdByUserId = me,
-                title = SMALL_EXPENSES,
-                amountCents = movement.amountCents,
-                currency = currency(),
-                category = "Bank",
-                notes = line,
-                dueDate = day.toEpochDay(),
-                dueTimeMinutes = 12 * 60,
-                kind = EntryKind.BILL.name,
-                status = PayStatus.PAID.name,
-                paidAt = movement.happenedAt,
-                paidAmountCents = movement.amountCents,
-                paidByUserId = me,
-                alarmEnabled = false,
-                requireReceipt = false,
-                createdAt = stamp,
-                updatedAt = stamp,
-                pendingSync = true
-            )
-        }
-        if (already != null) payments.update(entry) else payments.insert(entry)
+
+        // its own entry, with its own figure and its own category: the day shows them as one
+        // line, but a year of coffees can be added up and told apart from a year of petrol
+        val entry = Payment(
+            calendarId = _calendarId.value,
+            seriesId = newId(),
+            ownerUserId = me,
+            createdByUserId = me,
+            title = shop,
+            amountCents = movement.amountCents,
+            currency = currency(),
+            category = "",
+            groupKey = SMALL_GROUP,
+            dueDate = day.toEpochDay(),
+            dueTimeMinutes = moment.hour * 60 + moment.minute,
+            kind = EntryKind.BILL.name,
+            status = PayStatus.PAID.name,
+            paidAt = movement.happenedAt,
+            paidAmountCents = movement.amountCents,
+            paidByUserId = me,
+            alarmEnabled = false,
+            requireReceipt = false,
+            createdAt = stamp,
+            updatedAt = stamp,
+            pendingSync = true
+        )
+        payments.insert(entry)
 
         bank.upsertMovement(
             movement.copy(
@@ -1027,7 +1024,8 @@ class Repository(
         val room = (planned.amountCents * tolerance).toLong().coerceAtLeast(1)
         return payments.paidSince(_calendarId.value, from)
             .filter { it.id != planned.id && it.seriesId != planned.seriesId }
-            .filter { it.title != SMALL_EXPENSES && it.kind == planned.kind }
+            .filter { it.title != SMALL_EXPENSES && it.groupKey != SMALL_GROUP }
+            .filter { it.kind == planned.kind }
             .filter { kotlin.math.abs(it.amountCents - planned.amountCents) <= room }
             .sortedBy { kotlin.math.abs(it.amountCents - planned.amountCents) }
     }
@@ -1137,7 +1135,7 @@ class Repository(
                 ?: movement.title.ifBlank { movement.appLabel },
             amountCents = movement.amountCents,
             currency = currency(),
-            category = movement.appLabel,
+            category = "",
             notes = movement.text,
             dueDate = day.toEpochDay(),
             dueTimeMinutes = 12 * 60,
@@ -1424,3 +1422,6 @@ data class MovementMatch(
 
 /** The one entry that holds a day's small change. */
 const val SMALL_EXPENSES = "Small expenses"
+
+/** What marks an entry as part of the day's small change, shown as one line. */
+const val SMALL_GROUP = "small"

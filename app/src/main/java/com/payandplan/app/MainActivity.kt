@@ -70,6 +70,7 @@ import com.payandplan.app.ui.screens.NotesScreen
 import com.payandplan.app.ui.screens.PaymentDetailScreen
 import com.payandplan.app.ui.screens.PaymentsScreen
 import com.payandplan.app.ui.screens.SettingsScreen
+import com.payandplan.app.ui.screens.SpendScreen
 import com.payandplan.app.ui.theme.Aqua
 import com.payandplan.app.ui.theme.Cream
 import com.payandplan.app.ui.theme.Grape
@@ -328,7 +329,19 @@ private fun Root(
                 }
 
                 composable(Tab.Bills.route) {
-                    PaymentsScreen(vm = vm, onOpenPayment = { id -> nav.navigate("payment/$id?receipt=false") })
+                    PaymentsScreen(
+                        vm = vm,
+                        onOpenPayment = { id -> nav.navigate("payment/$id?receipt=false") },
+                        onOpenSpend = { nav.navigate("spend") }
+                    )
+                }
+
+                composable("spend") {
+                    SpendScreen(
+                        vm = vm,
+                        onBack = { nav.popBackStack() },
+                        onOpenPayment = { id -> nav.navigate("payment/$id?receipt=false") }
+                    )
                 }
 
                 composable(Tab.Lists.route) {

@@ -444,6 +444,7 @@ class ApiClient(private val prefs: Prefs) {
         currency = j.optString("currency", "EUR"),
         colorIndex = j.optInt("colorIndex"),
         category = j.optString("category"),
+        groupKey = j.optString("groupKey"),
         dueDate = j.optLong("dueDate"),
         dueTimeMinutes = j.optInt("dueTimeMinutes", 540),
         recurrence = j.optString("recurrence", "NONE"),
@@ -482,6 +483,7 @@ class ApiClient(private val prefs: Prefs) {
         .put("currency", p.currency)
         .put("colorIndex", p.colorIndex)
         .put("category", p.category)
+        .put("groupKey", p.groupKey)
         .put("dueDate", p.dueDate)
         .put("dueTimeMinutes", p.dueTimeMinutes)
         .put("recurrence", p.recurrence)

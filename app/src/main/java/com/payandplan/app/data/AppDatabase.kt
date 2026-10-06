@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ShoppingList::class, ShoppingItem::class, Note::class,
         BankRule::class, BankMovement::class, NotificationSample::class, BankLink::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,7 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Keep in step with the @Database version above. */
-        const val VERSION = 10
+        const val VERSION = 11
 
         /**
          * The bank rules, the movements waiting to be checked and the shop links live only on
@@ -52,6 +52,13 @@ abstract class AppDatabase : RoomDatabase() {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL(
                         "ALTER TABLE `bank_rules` ADD COLUMN `butNot` TEXT NOT NULL DEFAULT ''"
+                    )
+                }
+            },
+            object : Migration(10, 11) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE `payments` ADD COLUMN `groupKey` TEXT NOT NULL DEFAULT ''"
                     )
                 }
             }

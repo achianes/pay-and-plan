@@ -28,7 +28,7 @@ app.use(express.json({ limit: '2mb' }))
 
 const paymentColumns = [
   'id', 'calendar_id', 'series_id', 'owner_user_id', 'title', 'amount_cents', 'currency',
-  'color_index', 'category', 'due_date', 'due_time_minutes', 'recurrence', 'recurrence_end_date',
+  'color_index', 'category', 'group_key', 'due_date', 'due_time_minutes', 'recurrence', 'recurrence_end_date',
   'notes', 'status', 'paid_at', 'paid_amount_cents', 'paid_by_user_id', 'remind_days_before',
   'nag_minutes', 'alarm_enabled', 'require_receipt', 'installment_index', 'installment_count',
   'created_by_user_id', 'visibility', 'shopping_list_id', 'kind', 'location', 'duration_minutes',
@@ -334,6 +334,7 @@ app.post('/api/calendars/:calendarId/sync', auth, requireMember, (req, res) => {
         currency: String(p.currency || 'EUR'),
         colorIndex: Number(p.colorIndex || 0),
         category: String(p.category || ''),
+        groupKey: String(p.groupKey || ''),
         dueDate: Number(p.dueDate || 0),
         dueTimeMinutes: Number(p.dueTimeMinutes ?? 540),
         recurrence: String(p.recurrence || 'NONE'),

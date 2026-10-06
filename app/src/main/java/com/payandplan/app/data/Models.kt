@@ -66,6 +66,12 @@ data class Payment(
     val currency: String = "EUR",
     val colorIndex: Int = 0,
     val category: String = "",
+    /**
+     * Entries of a day that belong together and are shown as one line. The day's small
+     * change is filed this way: every coffee keeps its own figure and its own category, so
+     * a year of them can be added up, while the calendar still shows a single row.
+     */
+    val groupKey: String = "",
     /** epoch day of the due date */
     val dueDate: Long = 0,
     /** minutes from midnight for the due time / alarm time */
