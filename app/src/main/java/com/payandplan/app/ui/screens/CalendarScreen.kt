@@ -56,6 +56,13 @@ import com.payandplan.app.util.Format
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 @Composable
 fun CalendarScreen(
@@ -315,9 +322,8 @@ private fun DayCell(
             .padding(top = 8.dp, start = 3.dp, end = 3.dp, bottom = 3.dp)
     ) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                date.dayOfMonth.toString(),
-                style = MaterialTheme.typography.titleSmall.copy(fontFamily = PosterFont),
+            DayNumber(
+                day = date.dayOfMonth,
                 color = if (inMonth) Ink else Ink.copy(alpha = 0.55f)
             )
             if (stat != null) {
@@ -346,3 +352,28 @@ private fun DayCell(
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun Modifier.combinedClickableCompat(onClick: () -> Unit, onLongClick: () -> Unit): Modifier =
     this.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+
+/**
+ * The day of the month, on one line whatever happens. A cell is only so wide and the poster
+ * face is a wide one: "28" used to break in half and sit there as a 2 above an 8. It never
+ * wraps now, and on a narrow screen it gives up a little size instead.
+ */
+@Composable
+private fun DayNumber(day: Int, color: Color) {
+    val base = MaterialTheme.typography.titleSmall.copy(fontFamily = PosterFont)
+    var size by remember(day) { mutableStateOf(base.fontSize) }
+    var settled by remember(day) { mutableStateOf(false) }
+
+    Text(
+        text = day.toString(),
+        style = base.copy(fontSize = size),
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().drawWithContent { if (settled) drawContent() },
+        onTextLayout = { laid ->
+            if (laid.didOverflowWidth && size.value > 9f) size = (size.value * 0.9f).sp else settled = true
+        }
+    )
+}
