@@ -20,6 +20,10 @@ class MaintenanceWorker(
         return runCatching {
             repo.topUpAll()
             repo.armWindow()
+            // the bank is asked twice a day as well: a notification can be missed, the
+            // account cannot, and nothing here depends on the phone having been awake
+            runCatching { repo.readTheAccount() }
+                .onFailure { android.util.Log.w("PayPlan", "account not read: ${it.message}") }
             Result.success()
         }.getOrElse { Result.retry() }
     }

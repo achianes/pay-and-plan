@@ -56,9 +56,18 @@ object MovementStatus {
  * the calendar expected. Nothing here ever leaves the phone: it is only used to tick off
  * entries that do travel.
  */
-@Entity(tableName = "bank_movements", indices = [Index("status"), Index("happenedAt")])
+@Entity(
+    tableName = "bank_movements",
+    indices = [Index("status"), Index("happenedAt"), Index(value = ["externalId"], unique = true)]
+)
 data class BankMovement(
     @PrimaryKey val id: String = newId(),
+    /**
+     * What the bank itself calls this movement, when it was read from the account rather
+     * than from a notification. Asking the account again brings the same lines back, so
+     * this is what stops the same coffee being written down twice. Empty for notifications.
+     */
+    val externalId: String = "",
     val packageName: String = "",
     val appLabel: String = "",
     val title: String = "",
@@ -114,6 +123,10 @@ interface BankDao {
 
     @Query("SELECT * FROM bank_links WHERE shop = :shop LIMIT 1")
     suspend fun linkFor(shop: String): BankLink?
+
+    /** Whether this exact line of the account has already been written down. */
+    @Query("SELECT count(*) FROM bank_movements WHERE externalId = :externalId")
+    suspend fun seenExternal(externalId: String): Int
 
     @Query("SELECT * FROM bank_links ORDER BY label")
     fun observeLinks(): Flow<List<BankLink>>

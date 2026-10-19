@@ -238,6 +238,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun forgetBankLink(id: String) = viewModelScope.launch { repo.deleteBankLink(id) }
 
+    // ---------------------------------------------------------------- the bank, asked directly
+
+    fun bankingStatus(onResult: (com.payandplan.app.net.BankingStatus) -> Unit) =
+        viewModelScope.launch {
+            onResult(
+                runCatching { repo.bankingStatus() }
+                    .getOrDefault(com.payandplan.app.net.BankingStatus())
+            )
+        }
+
+    fun bankingBanks(country: String, onResult: (List<com.payandplan.app.net.BankChoice>) -> Unit) =
+        viewModelScope.launch {
+            onResult(runCatching { repo.bankingBanks(country) }.getOrDefault(emptyList()))
+        }
+
+    /** Hands back the page the owner has to open in order to say yes, or null when refused. */
+    fun bankingConnect(bank: String, country: String, onResult: (String?) -> Unit) =
+        viewModelScope.launch {
+            onResult(runCatching { repo.bankingConnect(bank, country) }.getOrNull())
+        }
+
+    fun bankingDisconnect(id: String, onDone: () -> Unit) = viewModelScope.launch {
+        runCatching { repo.bankingDisconnect(id) }
+        onDone()
+    }
+
+    /** Reads the account and lets the usual machinery deal with it; how many lines were new. */
+    fun readTheAccount(days: Int = 14, onDone: (Int?) -> Unit) = viewModelScope.launch {
+        onDone(runCatching { repo.readTheAccount(days) }.getOrNull())
+    }
+
     fun unpackableGroups(onResult: (Int) -> Unit) =
         viewModelScope.launch { onResult(repo.unpackableGroups()) }
 

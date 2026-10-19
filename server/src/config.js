@@ -27,5 +27,15 @@ export const config = {
   // an Ollama server with a vision model turns till receipts into shopping lists;
   // leave the URL empty and the feature is simply off, clients do not even show it
   ollamaUrl: (process.env.OLLAMA_URL || fileConfig.ollamaUrl || '').trim(),
-  ollamaModel: process.env.OLLAMA_MODEL || fileConfig.ollamaModel || 'qwen3-vl:8b'
+  ollamaModel: process.env.OLLAMA_MODEL || fileConfig.ollamaModel || 'qwen3-vl:8b',
+  // Enable Banking reads the account itself, under PSD2. The application id and the private
+  // key stay here and are never sent to a phone; with neither of them the feature is off
+  enableBankingAppId: (process.env.ENABLE_BANKING_APP_ID || fileConfig.enableBankingAppId || '').trim(),
+  enableBankingKeyPath: (
+    process.env.ENABLE_BANKING_KEY ||
+    fileConfig.enableBankingKeyPath ||
+    path.join(process.env.DATA_DIR || fileConfig.dataDir || process.cwd(), 'enablebanking.pem')
+  ),
+  // where a bank sends the owner back after they have said yes, from outside this house
+  publicUrl: (process.env.PUBLIC_URL || fileConfig.publicUrl || '').replace(/\/$/, '')
 }

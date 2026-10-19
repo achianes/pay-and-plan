@@ -62,6 +62,9 @@ import com.payandplan.app.util.MoneyText
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 /**
  * Where the phone is taught to read the bank. One rule per wording: which app says it, the
@@ -74,6 +77,11 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
     var refining by remember { mutableStateOf<BankRule?>(null) }
     val links by vm.bankLinks.collectAsState()
     var lumps by remember { mutableStateOf(0) }
+    var banking by remember { mutableStateOf(com.payandplan.app.net.BankingStatus()) }
+    var picking by remember { mutableStateOf(false) }
+    var reading by remember { mutableStateOf(false) }
+    fun refreshBanking() = vm.bankingStatus { banking = it }
+    LaunchedEffect(Unit) { refreshBanking() }
     LaunchedEffect(Unit) { vm.unpackableGroups { lumps = it } }
     val samples by vm.notificationSamples.collectAsState()
     var allowed by remember { mutableStateOf(MoneyNotificationListener.isAllowed(context)) }
@@ -168,6 +176,89 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelSmall,
                         color = Ink
                     )
+                }
+            }
+        }
+
+        if (banking.usable) {
+            item {
+                ComicCard(color = Sky, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "🏦 YOUR BANK, DIRECTLY",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Ink
+                    )
+                    Text(
+                        "A notification is quick but it only arrives if the phone is awake to " +
+                            "hear it. Let the bank itself tell us, and nothing is missed \u2014 not " +
+                            "the card payment made while the phone was in a bag. Your bank asks " +
+                            "you first, in its own app, and you can take it back whenever you like.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Ink
+                    )
+
+                    for (c in banking.connections) {
+                        Box(Modifier.height(10.dp))
+                        ComicCard(color = Paper, modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        c.bank,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Ink
+                                    )
+                                    Text(
+                                        listOfNotNull(
+                                            c.account.ifBlank { null },
+                                            c.ibanTail.ifBlank { null }?.let { "\u2026$it" },
+                                            consentLeft(c.validUntil)
+                                        ).joinToString("  \u00b7  "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Ink
+                                    )
+                                }
+                                ComicIconButton(
+                                    Icons.Filled.Close,
+                                    { vm.bankingDisconnect(c.id) { refreshBanking() } },
+                                    color = Coral, size = 32.dp,
+                                    contentDescription = "Disconnect this account"
+                                )
+                            }
+                        }
+                    }
+
+                    Box(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ComicButton(
+                            if (banking.connections.isEmpty()) "CONNECT A BANK" else "ADD ANOTHER",
+                            { picking = true },
+                            color = Mint, compact = true
+                        )
+                        if (banking.connections.isNotEmpty()) {
+                            ComicButton(
+                                if (reading) "READING\u2026" else "READ THE ACCOUNT",
+                                {
+                                    if (!reading) {
+                                        reading = true
+                                        vm.readTheAccount { made ->
+                                            reading = false
+                                            refreshBanking()
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                when {
+                                                    made == null -> "The bank could not be reached"
+                                                    made > 0 -> "$made new movement(s)"
+                                                    else -> "Nothing new in the account"
+                                                },
+                                                android.widget.Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                    }
+                                },
+                                color = Yellow, compact = true
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -348,6 +439,29 @@ fun BankScreen(vm: MainViewModel, onBack: () -> Unit) {
                 teaching = null
             },
             onDismiss = { teaching = null }
+        )
+    }
+
+    if (picking) {
+        BankPicker(
+            vm = vm,
+            onPicked = { url ->
+                picking = false
+                // the bank asks in its own page, in a real browser, never inside this app
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(url)
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }.onFailure {
+                    android.widget.Toast.makeText(
+                        context, "No browser to open it with", android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            },
+            onDismiss = { picking = false }
         )
     }
 
@@ -576,5 +690,88 @@ private fun MatchDialog(
             }, color = Sky, compact = true)
         },
         dismissButton = { ComicButton("Cancel", onDismiss, color = Paper, compact = true) }
+    )
+}
+
+/** How long the bank will go on answering for a consent the owner gave. */
+private fun consentLeft(validUntil: Long): String? {
+    if (validUntil <= 0) return null
+    val days = (validUntil - System.currentTimeMillis()) / (24 * 60 * 60 * 1000L)
+    return when {
+        days < 0 -> "expired, connect again"
+        days == 0L -> "ends today"
+        days == 1L -> "1 day left"
+        else -> "$days days left"
+    }
+}
+
+/**
+ * Which bank. The list is whatever this country's banks let an application like ours talk
+ * to; picking one opens that bank's own page, where the owner says yes or does not.
+ */
+@Composable
+private fun BankPicker(
+    vm: MainViewModel,
+    onPicked: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var banks by remember { mutableStateOf<List<com.payandplan.app.net.BankChoice>?>(null) }
+    var search by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { vm.bankingBanks("IT") { banks = it } }
+
+    val shown = banks.orEmpty()
+        .filter { search.isBlank() || it.name.contains(search, ignoreCase = true) }
+        .take(40)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Paper,
+        title = { Text("WHICH BANK?", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                when {
+                    banks == null -> Text("Asking\u2026", style = MaterialTheme.typography.bodySmall, color = Ink)
+                    banks!!.isEmpty() -> Text(
+                        "No bank answered. The server may not be allowed to ask yet.",
+                        style = MaterialTheme.typography.bodySmall, color = Ink
+                    )
+                    else -> {
+                        ComicField(search, { search = it }, "Search", Modifier.fillMaxWidth())
+                        Box(Modifier.height(8.dp))
+                        Column(
+                            Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            for (b in shown) {
+                                ComicCard(
+                                    color = Paper,
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        vm.bankingConnect(b.name, b.country) { url ->
+                                            if (url.isNullOrBlank()) {
+                                                android.widget.Toast.makeText(
+                                                    context,
+                                                    "That bank did not open",
+                                                    android.widget.Toast.LENGTH_LONG
+                                                ).show()
+                                            } else {
+                                                onPicked(url)
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Text(
+                                        b.name + if (b.beta) "  \u00b7  beta" else "",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Ink
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { ComicButton("Cancel", onDismiss, color = Paper, compact = true) }
     )
 }

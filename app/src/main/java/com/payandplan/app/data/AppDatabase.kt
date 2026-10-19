@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ShoppingList::class, ShoppingItem::class, Note::class,
         BankRule::class, BankMovement::class, NotificationSample::class, BankLink::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,7 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** Keep in step with the @Database version above. */
-        const val VERSION = 12
+        const val VERSION = 13
 
         /**
          * The bank rules, the movements waiting to be checked and the shop links live only on
@@ -66,6 +66,20 @@ abstract class AppDatabase : RoomDatabase() {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL(
                         "ALTER TABLE `bank_links` ADD COLUMN `category` TEXT NOT NULL DEFAULT ''"
+                    )
+                }
+            },
+            object : Migration(12, 13) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE `bank_movements` ADD COLUMN `externalId` TEXT NOT NULL DEFAULT ''"
+                    )
+                    // the notifications already here have no reference of their own, and an
+                    // empty string is only unique once: they keep one each
+                    db.execSQL("UPDATE `bank_movements` SET `externalId` = `id` WHERE `externalId` = ''")
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_bank_movements_externalId` " +
+                            "ON `bank_movements` (`externalId`)"
                     )
                 }
             }

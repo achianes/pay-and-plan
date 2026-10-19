@@ -190,6 +190,36 @@ CREATE TABLE IF NOT EXISTS notes (
   FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_notes_cal ON notes(calendar_id, updated_at);
+
+-- a bank the owner has let us read, under PSD2. The consent is theirs and it expires:
+-- valid_until is the bank's own date, after which the whole thing has to be asked again.
+CREATE TABLE IF NOT EXISTS bank_connections (
+  id TEXT PRIMARY KEY,
+  calendar_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  aspsp TEXT NOT NULL DEFAULT '',
+  country TEXT NOT NULL DEFAULT '',
+  session_id TEXT NOT NULL DEFAULT '',
+  account_uid TEXT NOT NULL DEFAULT '',
+  account_name TEXT NOT NULL DEFAULT '',
+  iban_tail TEXT NOT NULL DEFAULT '',
+  currency TEXT NOT NULL DEFAULT 'EUR',
+  valid_until INTEGER NOT NULL DEFAULT 0,
+  last_read_at INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (calendar_id) REFERENCES calendars(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_bank_conn_cal ON bank_connections(calendar_id);
+
+-- an authorization that has been started and not yet come back
+CREATE TABLE IF NOT EXISTS bank_pending (
+  state TEXT PRIMARY KEY,
+  calendar_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  aspsp TEXT NOT NULL DEFAULT '',
+  country TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
 `)
 
 // columns added after the first release

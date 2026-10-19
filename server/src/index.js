@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db, FILES_DIR, now, uuid, inviteCode, isMember } from './db.js'
 import { config } from './config.js'
+import * as banking from './banking.js'
 import { unfurl, fetchImage } from './unfurl.js'
 import { readReceipt } from './receipt.js'
 import { lookupProduct, productImage } from './products.js'
@@ -626,6 +627,157 @@ app.post('/api/calendars/:calendarId/resolve-event', auth, requireMember, async 
   } catch (e) {
     res.status(502).json({ error: e.message })
   }
+})
+
+// ---------------------------------------------------------------- the bank, asked directly
+
+/**
+ * Enable Banking reads the account under PSD2: the owner says yes in their own bank's app,
+ * and from then on the movements arrive complete, including the card payment made while the
+ * phone was in a bag. The notifications stay on — they are instant and this is not — and the
+ * phone drops whatever it has already seen, by the fingerprint each movement carries.
+ */
+app.get('/api/banking/status', auth, (req, res) => {
+  const rows = db.prepare(
+    'SELECT id, aspsp, account_name, iban_tail, valid_until, last_read_at FROM bank_connections WHERE user_id = ?'
+  ).all(req.user.id)
+  res.json({
+    configured: banking.configured(),
+    redirectReady: Boolean(config.publicUrl),
+    connections: rows.map((r) => ({
+      id: r.id,
+      bank: r.aspsp,
+      account: r.account_name,
+      ibanTail: r.iban_tail,
+      validUntil: r.valid_until,
+      lastReadAt: r.last_read_at
+    }))
+  })
+})
+
+app.get('/api/banking/banks', auth, async (req, res) => {
+  if (!banking.configured()) return res.status(503).json({ error: 'banking not configured' })
+  try {
+    res.json({ banks: await banking.banks(String(req.query.country || 'IT').toUpperCase()) })
+  } catch (e) {
+    res.status(502).json({ error: e.message })
+  }
+})
+
+app.post('/api/calendars/:calendarId/banking/connect', auth, requireMember, async (req, res) => {
+  if (!banking.configured()) return res.status(503).json({ error: 'banking not configured' })
+  if (!config.publicUrl) return res.status(503).json({ error: 'no publicUrl configured' })
+
+  const bank = String(req.body?.bank || '').trim()
+  const country = String(req.body?.country || 'IT').toUpperCase()
+  if (!bank) return res.status(400).json({ error: 'bank is required' })
+
+  const state = uuid()
+  try {
+    const started = await banking.startAuth({
+      bank,
+      country,
+      redirectUrl: `${config.publicUrl}/api/banking/callback`,
+      state
+    })
+    db.prepare(
+      'INSERT INTO bank_pending (state, calendar_id, user_id, aspsp, country, created_at) VALUES (?,?,?,?,?,?)'
+    ).run(state, req.params.calendarId, req.user.id, bank, country, Date.now())
+    res.json({ url: started.url })
+  } catch (e) {
+    res.status(502).json({ error: e.message })
+  }
+})
+
+/** Where the bank sends the owner back. A browser lands here, so it answers in a page. */
+app.get('/api/banking/callback', async (req, res) => {
+  const code = String(req.query.code || '')
+  const state = String(req.query.state || '')
+  const page = (title, body) => res.status(code && state ? 200 : 400).type('html').send(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<title>${title}</title><style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;` +
+    `display:grid;place-items:center;background:#fdf6e9;color:#1a1a1a;padding:24px;text-align:center}` +
+    `div{max-width:28rem}h1{font-size:1.4rem;margin:0 0 .5rem}p{margin:0;line-height:1.5}</style>` +
+    `<div><h1>${title}</h1><p>${body}</p></div>`
+  )
+
+  const waiting = state
+    ? db.prepare('SELECT * FROM bank_pending WHERE state = ?').get(state)
+    : null
+  if (!code || !waiting) return page('Something went missing', 'Start the connection again from the app.')
+
+  try {
+    const done = await banking.completeAuth(code)
+    db.prepare('DELETE FROM bank_pending WHERE state = ?').run(state)
+    const now = Date.now()
+    for (const account of done.accounts) {
+      db.prepare(
+        `INSERT INTO bank_connections
+         (id, calendar_id, user_id, aspsp, country, session_id, account_uid, account_name,
+          iban_tail, currency, valid_until, last_read_at, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).run(
+        uuid(), waiting.calendar_id, waiting.user_id,
+        done.aspsp || waiting.aspsp, done.country || waiting.country,
+        done.sessionId, account.uid, account.name,
+        account.iban ? account.iban.slice(-4) : '', account.currency,
+        done.validUntil || 0, 0, now
+      )
+    }
+    page('Your bank is connected', 'You can close this page and go back to Pay &amp; Plan.')
+  } catch (e) {
+    page('The bank said no', e.message)
+  }
+})
+
+/**
+ * What the account has done since a date. The phone asks, decides what is new to it and
+ * feeds it through the same machinery as the notifications, so a shop that was sorted out
+ * once is still sorted out here.
+ */
+app.get('/api/calendars/:calendarId/banking/movements', auth, requireMember, async (req, res) => {
+  if (!banking.configured()) return res.status(503).json({ error: 'banking not configured' })
+
+  const days = Math.min(Math.max(Number(req.query.days || 14), 1), 365)
+  const since = Date.now() - days * 24 * 60 * 60 * 1000
+  const rows = db.prepare(
+    'SELECT * FROM bank_connections WHERE calendar_id = ? AND user_id = ?'
+  ).all(req.params.calendarId, req.user.id)
+  if (!rows.length) return res.json({ movements: [], accounts: 0 })
+
+  const movements = []
+  const trouble = []
+  for (const row of rows) {
+    try {
+      const raw = await banking.transactions(row.account_uid, since)
+      for (const t of raw) {
+        // a payment that is still pending can change its figure, or never happen at all
+        if (t.status && t.status !== 'BOOK') continue
+        const m = banking.plainMovement(t, row.account_uid)
+        if (m && m.happenedAt >= since) movements.push({ ...m, bank: row.aspsp, account: row.account_name })
+      }
+      db.prepare('UPDATE bank_connections SET last_read_at = ? WHERE id = ?').run(Date.now(), row.id)
+    } catch (e) {
+      trouble.push(`${row.aspsp}: ${e.message}`)
+    }
+  }
+  movements.sort((a, b) => b.happenedAt - a.happenedAt)
+  res.json({ movements, accounts: rows.length, trouble })
+})
+
+app.delete('/api/calendars/:calendarId/banking/connections/:id', auth, requireMember, async (req, res) => {
+  const row = db.prepare('SELECT * FROM bank_connections WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id)
+  if (!row) return res.status(404).json({ error: 'not found' })
+
+  // the consent is the owner's: hand it back to the bank as well, not only forget it here
+  const others = db.prepare('SELECT count(*) AS c FROM bank_connections WHERE session_id = ? AND id <> ?')
+    .get(row.session_id, row.id).c
+  if (!others && row.session_id) {
+    try { await banking.dropSession(row.session_id) } catch (e) { console.warn('[banking]', e.message) }
+  }
+  db.prepare('DELETE FROM bank_connections WHERE id = ?').run(row.id)
+  res.json({ ok: true })
 })
 
 const receiptJobs = new Map()

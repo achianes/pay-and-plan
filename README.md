@@ -135,10 +135,71 @@ Configure it with environment variables, or with a JSON file pointed at by `PAYP
 | `DATA_DIR` | where the SQLite file and the uploads live |
 | `OLLAMA_URL` | optional — an Ollama server for reading receipts; empty means the feature is off |
 | `OLLAMA_MODEL` | the vision model to use on it (default `qwen3-vl:8b`) |
+| `ENABLE_BANKING_APP_ID` | optional — your Enable Banking application id; empty means the feature is off |
+| `ENABLE_BANKING_KEY` | path to the matching private key (default `DATA_DIR/enablebanking.pem`) |
+| `PUBLIC_URL` | the address your server answers on from outside, e.g. `https://pay.example.net` |
 
 On Windows, `server/scripts/install-windows-services.ps1` (run elevated) does the whole thing: generates a
 secret, writes the config, registers the server as a scheduled task that starts at boot, and wires a
 Cloudflare tunnel so the household can reach it from outside.
+
+### Reading the account with Enable Banking
+
+**Off by default.** Without an application id and a key, no bank card appears in the app and the
+endpoints answer `503`. Everything else — including reading the bank's notifications on the phone —
+works exactly as before.
+
+A notification is instant, but it only arrives if the phone is awake to hear it. The account is the
+other way round: it says everything, a little later. Both are on at once, and a payment that arrives
+by both roads is written down once: each line from the account carries a fingerprint of its own, and a
+line that matches a notification of the same figure, from the same shop, within a day and a half is
+recognised as the same money seen twice.
+
+What comes out of it is an ordinary movement, so it goes through the same machinery as the rest: a shop
+that was once said to close a bill closes it again by itself, a category once given to a shop is given
+again, and the day's small change is grouped under the threshold you set.
+
+To turn it on:
+
+1. Register at [Enable Banking](https://enablebanking.com) and create an application in the control
+   panel. Choose the **AIS** service (reading accounts; nothing here ever moves money), your country,
+   and add your server's callback as a redirect URL:
+
+   ```
+   https://pay.example.net/api/banking/callback
+   ```
+
+2. The control panel gives you an **application id** and lets you upload a certificate. Generate the key
+   pair yourself if you prefer:
+
+   ```bash
+   openssl genrsa -out enablebanking.pem 2048
+   openssl rsa -in enablebanking.pem -pubout -out enablebanking.pub
+   ```
+
+   Upload the public half, keep the private half. Put it where the server can read it and **nowhere
+   else** — it is not a password you can change in a hurry.
+
+3. Tell the server:
+
+   ```bash
+   ENABLE_BANKING_APP_ID=00000000-0000-0000-0000-000000000000
+   ENABLE_BANKING_KEY=/var/lib/payandplan/enablebanking.pem
+   PUBLIC_URL=https://pay.example.net
+   ```
+
+   Or the same three keys in `config.json` as `enableBankingAppId`, `enableBankingKeyPath` and
+   `publicUrl`. Restart the server.
+
+4. In the app: **Setup → The bank → Connect a bank**. Pick yours, and it opens your bank's own page in a
+   real browser, never inside the app. You say yes there, with your usual bank login, and come back.
+
+The consent is yours and it has an end: banks grant around 90 days, after which the card says how long is
+left and you connect again. Disconnecting in the app hands the consent back to the bank as well as
+forgetting it here.
+
+**What the server stores:** the session the bank issued, the account's identifier, its name and the last
+four of the IBAN. Not your bank login, which it never sees — you type that on the bank's own page.
 
 ### Reading receipts with Ollama
 
@@ -232,6 +293,11 @@ Your data lives on your own server: a SQLite file and a folder of attachments, b
 Nothing is sent anywhere else, except the nightly backup to your own Google Drive when you connect it
 (see [Backup to Google Drive](#backup-to-google-drive)). The link reader refuses to fetch addresses inside the local network, so it
 cannot be used to poke at your home devices from outside.
+
+The phone's notification reader never sends a notification anywhere: what it reads stays in the phone's
+own database, and only the lines matching a rule you wrote become a movement. If you connect a bank, the
+Enable Banking private key stays on your server and is never sent to a phone; your bank login is typed on
+your bank's own page and this software never sees it.
 
 ---
 

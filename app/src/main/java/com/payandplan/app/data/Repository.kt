@@ -9,6 +9,8 @@ import com.payandplan.app.net.Place
 import com.payandplan.app.util.CalendarEvent
 import com.payandplan.app.util.FileStore
 import com.payandplan.app.util.Format
+import com.payandplan.app.net.BankingStatus
+import com.payandplan.app.net.BankChoice
 import com.payandplan.app.util.MoneyText
 import com.payandplan.app.util.SmallChange
 import com.payandplan.app.util.Prefs
@@ -933,18 +935,72 @@ class Repository(
         // banks repeat themselves: the same line twice in a few hours is one movement
         if (bank.seenAlready(packageName, amount, text, happenedAt - 6 * 60 * 60 * 1000L) > 0) return false
 
-        val movement = BankMovement(
-            packageName = packageName, appLabel = appLabel, title = title, text = text,
-            amountCents = amount, kind = rule.kind, happenedAt = happenedAt
+        return settle(
+            BankMovement(
+                packageName = packageName, appLabel = appLabel, title = title, text = text,
+                amountCents = amount, kind = rule.kind, happenedAt = happenedAt
+            )
         )
+    }
+
+    /**
+     * A movement read from the account itself rather than from a notification. The bank's
+     * own reference comes with it, so asking the account again — which brings the same
+     * lines back every time — never writes the same coffee down twice.
+     */
+    suspend fun recordFromAccount(
+        externalId: String,
+        bankName: String,
+        name: String,
+        text: String,
+        amountCents: Long,
+        kind: String,
+        happenedAt: Long
+    ): Boolean {
+        if (externalId.isBlank() || amountCents <= 0) return false
+        if (bank.seenExternal(externalId) > 0) return false
+
+        // a notification about the same payment may already be here: one figure, one shop,
+        // one afternoon apart is the same money seen twice, from two directions
+        if (bank.seenAlready(ACCOUNT_SOURCE, amountCents, text, happenedAt - 6 * 60 * 60 * 1000L) > 0) {
+            return false
+        }
+        val echo = bank.stillWaiting().any {
+            it.amountCents == amountCents &&
+                kotlin.math.abs(it.happenedAt - happenedAt) < 36 * 60 * 60 * 1000L &&
+                (MoneyText.similarity(it.title + " " + it.text, name) >= 0.34 ||
+                    MoneyText.similarity(it.title, name) >= 0.34)
+        }
+        if (echo) return false
+
+        return settle(
+            BankMovement(
+                externalId = externalId,
+                packageName = ACCOUNT_SOURCE,
+                appLabel = bankName,
+                title = name,
+                text = text,
+                amountCents = amountCents,
+                kind = kind,
+                happenedAt = happenedAt
+            )
+        )
+    }
+
+    /**
+     * What happens to a movement once it exists, wherever it was read: the shop that was
+     * sorted out once closes the same bill again, a figure and a wording that both agree
+     * tick an entry off, and anything left over is written into the day it happened.
+     */
+    private suspend fun settle(movement: BankMovement): Boolean {
         bank.upsertMovement(movement)
-        bank.forgetOlderThan(happenedAt - 90L * 24 * 60 * 60 * 1000)
+        bank.forgetOlderThan(movement.happenedAt - 90L * 24 * 60 * 60 * 1000)
 
         // a shop the house has already sorted out once closes the same series again
-        val shop = MoneyText.merchant(text, title)
-        val learnt = shop?.let { bank.linkFor(MoneyText.bare(it)) }
-        if (learnt != null) {
-            val day = java.time.Instant.ofEpochMilli(happenedAt)
+        val shop = MoneyText.merchant(movement.text, movement.title) ?: movement.title
+        val learnt = bank.linkFor(MoneyText.bare(shop))
+        if (learnt != null && learnt.seriesId.isNotBlank()) {
+            val day = java.time.Instant.ofEpochMilli(movement.happenedAt)
                 .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay()
             val waiting = payments.nearestOpenInSeries(learnt.seriesId, day)
             if (waiting != null) {
@@ -963,6 +1019,44 @@ class Repository(
         // nothing was waiting for it: write it into its day rather than leave it hanging
         if (prefs.autoAddExpenses) fileIntoTheDay(movement)
         return true
+    }
+
+    /**
+     * Asks the server what the account has done, and lets the usual machinery deal with it.
+     * Returns how many lines were new; the rest were already here, by one road or the other.
+     */
+    suspend fun readTheAccount(days: Int = 14): Int {
+        val lines = api.bankMovements(_calendarId.value, days)
+        var made = 0
+        for (line in lines) {
+            val fresh = runCatching {
+                recordFromAccount(
+                    externalId = line.externalId,
+                    bankName = line.bank,
+                    name = line.name,
+                    text = line.text,
+                    amountCents = line.amountCents,
+                    kind = line.kind,
+                    happenedAt = line.happenedAt
+                )
+            }.onFailure {
+                android.util.Log.w("PayPlan", "account line not taken: ${it.message}")
+            }.getOrDefault(false)
+            if (fresh) made++
+        }
+        if (made > 0) syncQuietly()
+        return made
+    }
+
+    suspend fun bankingStatus(): BankingStatus = api.bankingStatus()
+
+    suspend fun bankingBanks(country: String): List<BankChoice> = api.bankingBanks(country)
+
+    suspend fun bankingConnect(bank: String, country: String): String? =
+        api.bankingConnect(_calendarId.value, bank, country)
+
+    suspend fun bankingDisconnect(id: String) {
+        api.bankingDisconnect(_calendarId.value, id)
     }
 
     /**
@@ -1581,3 +1675,6 @@ const val SMALL_GROUP = "small"
 
 /** What marks a day's small change that was put back together, and can be opened again. */
 const val SMALL_PACKED = "smallpack"
+
+/** What a movement read from the account itself is filed under, instead of an app's name. */
+const val ACCOUNT_SOURCE = "enablebanking"

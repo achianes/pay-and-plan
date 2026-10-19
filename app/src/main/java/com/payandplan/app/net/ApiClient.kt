@@ -322,6 +322,78 @@ class ApiClient(private val prefs: Prefs) {
         }
     }
 
+    // ---------------------------------------------------------------- the bank, asked directly
+
+    /** Whether the server can talk to a bank at all, and what is already connected. */
+    suspend fun bankingStatus(): BankingStatus {
+        val text = try {
+            request("GET", "/api/banking/status", null)
+        } catch (e: ApiException) {
+            if (e.code == 503 || e.code == 404) return BankingStatus()
+            throw e
+        }
+        val j = JSONObject(text)
+        return BankingStatus(
+            configured = j.optBoolean("configured"),
+            redirectReady = j.optBoolean("redirectReady"),
+            connections = j.optJSONArray("connections").mapObjects {
+                BankConnection(
+                    id = it.optString("id"),
+                    bank = it.optString("bank"),
+                    account = it.optString("account"),
+                    ibanTail = it.optString("ibanTail"),
+                    validUntil = it.optLong("validUntil"),
+                    lastReadAt = it.optLong("lastReadAt")
+                )
+            }
+        )
+    }
+
+    suspend fun bankingBanks(country: String): List<BankChoice> {
+        val text = request("GET", "/api/banking/banks?country=$country", null)
+        return JSONObject(text).optJSONArray("banks").mapObjects {
+            BankChoice(
+                name = it.optString("name"),
+                country = it.optString("country"),
+                beta = it.optBoolean("beta")
+            )
+        }
+    }
+
+    /** The page the owner has to open to say yes, in their own bank. */
+    suspend fun bankingConnect(calendarId: String, bank: String, country: String): String? {
+        val text = request(
+            "POST", "/api/calendars/$calendarId/banking/connect",
+            JSONObject().put("bank", bank).put("country", country)
+        )
+        return JSONObject(text).optString("url").ifBlank { null }
+    }
+
+    suspend fun bankingDisconnect(calendarId: String, id: String) {
+        request("DELETE", "/api/calendars/$calendarId/banking/connections/$id", null)
+    }
+
+    /** What the account has done lately, already said the way this house says it. */
+    suspend fun bankMovements(calendarId: String, days: Int): List<AccountLine> {
+        val text = try {
+            request("GET", "/api/calendars/$calendarId/banking/movements?days=$days", null)
+        } catch (e: ApiException) {
+            if (e.code == 503) return emptyList()
+            throw e
+        }
+        return JSONObject(text).optJSONArray("movements").mapObjects {
+            AccountLine(
+                externalId = it.optString("externalId"),
+                bank = it.optString("bank"),
+                name = it.optString("name"),
+                text = it.optString("text"),
+                amountCents = it.optLong("amountCents"),
+                kind = it.optString("kind", "OUT"),
+                happenedAt = it.optLong("happenedAt")
+            )
+        }
+    }
+
     /** A shared Google Calendar link -> the event behind it, or null when the page hides it. */
     suspend fun resolveEventLink(calendarId: String, url: String): com.payandplan.app.util.CalendarEvent? {
         val text = try {
