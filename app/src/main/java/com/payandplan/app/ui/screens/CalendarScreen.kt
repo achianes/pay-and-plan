@@ -42,6 +42,8 @@ import com.payandplan.app.ui.components.ComicButton
 import com.payandplan.app.ui.components.ComicCard
 import com.payandplan.app.ui.components.ComicIconButton
 import com.payandplan.app.ui.components.PaymentRow
+import com.payandplan.app.ui.components.SmallChangeRow
+import com.payandplan.app.ui.components.splitSmallChange
 import com.payandplan.app.ui.components.PosterTitle
 import com.payandplan.app.ui.components.SpeechBubble
 import com.payandplan.app.ui.theme.Coral
@@ -164,7 +166,9 @@ fun CalendarScreen(
                 )
             }
         } else {
-            items(dayPayments, key = { it.id }) { p ->
+            // the day's small change reads as one line here too, not as five coffees
+            val (plain, small) = dayPayments.splitSmallChange(vm.smallExpenseCents())
+            items(plain, key = { it.id }) { p ->
                 PaymentRow(
                     payment = p,
                     currency = currency,
@@ -173,6 +177,15 @@ fun CalendarScreen(
                     onQuickPaid = if (p.isOpen && !p.requireReceipt) ({ vm.markPaid(p.id) }) else null,
                     today = today
                 )
+            }
+            if (small.isNotEmpty()) {
+                item(key = "small_change") {
+                    SmallChangeRow(
+                        entries = small,
+                        currency = currency,
+                        onClick = { onOpenDay(selected) }
+                    )
+                }
             }
         }
     }

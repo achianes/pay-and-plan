@@ -36,6 +36,7 @@ import com.payandplan.app.ui.components.ComicChip
 import com.payandplan.app.ui.components.ComicField
 import com.payandplan.app.ui.components.ComicIconButton
 import com.payandplan.app.ui.components.PaymentRow
+import com.payandplan.app.ui.components.splitSmallChange
 import com.payandplan.app.ui.components.SpeechBubble
 import com.payandplan.app.ui.theme.Grape
 import com.payandplan.app.ui.theme.Ink
@@ -113,10 +114,10 @@ fun DayScreen(
             item { SpeechBubble("No bills on this day.", Modifier.fillMaxWidth(), Yellow, "😌") }
         } else {
             // the day's small change is one line until you ask to see what is inside it
-            val under = vm.smallExpenseCents()
-            val small = payments.filter { it.isSmallChange(under) }
             val packed = payments.filter { it.isPacked }
-            val plain = payments.filter { !it.isSmallChange(under) && !it.isPacked }
+            val (rest, small) = payments.filterNot { it.isPacked }
+                .splitSmallChange(vm.smallExpenseCents())
+            val plain = rest
             items(plain, key = { it.id }) { p ->
                 PaymentRow(
                     payment = p,
