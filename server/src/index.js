@@ -15,6 +15,7 @@ import { lookupProduct, productImage } from './products.js'
 import { searchPlaces, resolveEventLink } from './places.js'
 import * as push from './push.js'
 import { mountBackup, startBackupRounds } from './backup.js'
+import { startApkHandout } from './apk.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = config.port
@@ -910,6 +911,8 @@ app.use((err, _req, res, _next) => {
 
 push.startRounds()
 startBackupRounds()
+// the Android build, on the tailnet and nowhere else: its own listener, its own bind
+startApkHandout()
 
 app.listen(PORT, () => {
   console.log(`Pay & Plan server listening on http://0.0.0.0:${PORT}`)

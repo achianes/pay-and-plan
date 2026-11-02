@@ -285,6 +285,26 @@ Nothing to build. It is served by the server itself; on iPhone open it in Safari
 
 Point it at your server in **Setup**, then join a calendar with its invite code.
 
+#### Handing the build to a phone that is not on a cable
+
+Drop the built `.apk` into `DATA_DIR/apk/` and the server offers it at
+`http://<your-tailscale-address>:8100/` — a page with the file's size, date and SHA-256, and a
+button the phone can install from.
+
+It is handed out **on the tailnet and nowhere else**. The main server usually sits behind a
+public tunnel, so anything mounted on it is on the open internet the moment it exists. This has a
+listener of its own, bound to the machine's Tailscale addresses only: a connection from anywhere
+else is refused before a request is even read, and the public address answers the web app, not the
+build. An APK is a signed thing a phone will install, so this is not pedantry.
+
+| key | meaning |
+| --- | --- |
+| `APK_DIR` | where the builds are kept (default `DATA_DIR/apk`) |
+| `APK_PORT` | the port of the handout (default `8100`); `0` turns it off |
+
+With no Tailscale address on the machine it says so in the log and hands out nothing. If you keep
+several builds in the folder, the newest is the one on offer.
+
 ---
 
 ## Privacy
@@ -298,6 +318,9 @@ The phone's notification reader never sends a notification anywhere: what it rea
 own database, and only the lines matching a rule you wrote become a movement. If you connect a bank, the
 Enable Banking private key stays on your server and is never sent to a phone; your bank login is typed on
 your bank's own page and this software never sees it.
+
+The Android build is handed out on your tailnet only, never through the public address, so an
+installable package signed with your key is not left sitting on the open internet.
 
 ---
 

@@ -17,8 +17,9 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 Write-Host 'stopping the scheduled task...'
 schtasks /End /TN PayAndPlanServer *> $null
 
-# whatever is still holding the port goes, whoever owns it
-Get-NetTCPConnection -LocalPort 8099 -State Listen -ErrorAction SilentlyContinue |
+# whatever is still holding the ports goes, whoever owns it. 8099 is the server; 8100 is
+# the tailnet-only handout of the Android build, which the same process listens on.
+Get-NetTCPConnection -LocalPort 8099, 8100 -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique |
     ForEach-Object {
         Write-Host "killing pid $_"

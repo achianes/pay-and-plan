@@ -37,5 +37,11 @@ export const config = {
     path.join(process.env.DATA_DIR || fileConfig.dataDir || process.cwd(), 'enablebanking.pem')
   ),
   // where a bank sends the owner back after they have said yes, from outside this house
-  publicUrl: (process.env.PUBLIC_URL || fileConfig.publicUrl || '').replace(/\/$/, '')
+  publicUrl: (process.env.PUBLIC_URL || fileConfig.publicUrl || '').replace(/\/$/, ''),
+  // The Android build is handed out on the tailnet and nowhere else, so it gets a listener
+  // of its own bound to the tailnet addresses: the public tunnel points at the main port
+  // and cannot reach this one. Set the port to 0 and the handout is off.
+  apkPort: Number(process.env.APK_PORT ?? fileConfig.apkPort ?? 8100),
+  apkDir: process.env.APK_DIR || fileConfig.apkDir ||
+    path.join(process.env.DATA_DIR || fileConfig.dataDir || process.cwd(), 'apk')
 }
