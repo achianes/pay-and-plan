@@ -891,6 +891,10 @@ class Repository(
     ): Boolean {
         bank.upsertSample(
             NotificationSample(
+                // the same notification read again is the same sample, not a new one: the
+                // shade is reread every quarter of an hour and sixty copies of one line
+                // would push every other app's wording out of the list
+                id = BankMovement.shadeName(packageName, 0, "$title|$text", postedAt),
                 packageName = packageName, appLabel = appLabel,
                 title = title, text = text, seenAt = postedAt
             )
@@ -932,11 +936,16 @@ class Repository(
     ): Boolean {
         val amount = MoneyText.amountCents("$title $text") ?: return false
 
+        // this very notification, read again: the shade is reread every quarter of an hour
+        val name = BankMovement.shadeName(packageName, amount, text, happenedAt)
+        if (bank.seenExternal(name) > 0) return false
+
         // banks repeat themselves: the same line twice in a few hours is one movement
         if (bank.seenAlready(packageName, amount, text, happenedAt - 6 * 60 * 60 * 1000L) > 0) return false
 
         return settle(
             BankMovement(
+                externalId = name,
                 packageName = packageName, appLabel = appLabel, title = title, text = text,
                 amountCents = amount, kind = rule.kind, happenedAt = happenedAt
             )

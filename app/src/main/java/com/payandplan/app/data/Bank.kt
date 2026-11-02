@@ -83,6 +83,23 @@ data class BankMovement(
 ) {
     val isPending: Boolean get() = status == MovementStatus.PENDING
     val isIncome: Boolean get() = kind == MoneyKind.IN
+
+    companion object {
+        /**
+         * A name for a line read from a notification, since the bank gives it none. It has
+         * to be one: the name is unique, so every notification calling itself "" meant the
+         * next one quietly pushed out the last, and the same card payment was written into
+         * the day again at every rescan.
+         *
+         * The same notification read ten times answers the same name ten times: the app it
+         * came from, the figure, the wording, and the minute it was posted.
+         */
+        fun shadeName(packageName: String, amountCents: Long, text: String, happenedAt: Long): String {
+            val of = "$packageName|$amountCents|${text.trim()}|${happenedAt / 60_000L}"
+            val digest = java.security.MessageDigest.getInstance("SHA-1").digest(of.toByteArray())
+            return "shade:" + digest.joinToString("") { "%02x".format(it) }
+        }
+    }
 }
 
 /**
